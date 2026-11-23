@@ -25,6 +25,14 @@ export function createApi(S) {
   const renewalCtx = () => ({ bal: L.balances(S.read('ROSTER'), S.read('SESS'), S.read('PAY'), today()), threshold: Number(conf()['續費提醒堂數']) || 6, def: Number(conf()['預設續費堂數']) || 12 });
 
   const A = {};
+  const ROLE_L = { boss: '主管', branch: '分校行政', teacher: '老師', assistant: '助教' };
+  /** 寫一筆操作紀錄（類別：點名／補課／名單／續費／調課／月結／管理／登入） */
+  const log = (cat, action, cls, target, detail) => S.W.log({
+    '時間': L.nowSecTPE(), '日期': today(), uid: au.uid, '姓名': au.name, '角色': ROLE_L[au.role] || au.role,
+    '類別': cat, '動作': action, '班級': cls || '', '對象': target || '', '內容': detail || ''
+  });
+  A.logLogin = () => log('登入', '登入系統', '', '', au.email || '');
+  const ST_L = { 'V': '到', '☆': '試聽到', '缺': '缺', '△': '補課', '': '未點' };
 
   A.apiLogin = function () {
     const t = today(), todayCls = {};
@@ -72,22 +80,27 @@ export function createApi(S) {
     if (s0['狀態'] === '停課') throw new Error('這堂已停課，不能點名');
     const existing = {};
     S.read('ATT').forEach(a => { if (a['班級'] === cls && a['日期'] === date) existing[a['分校'] + '|' + a['學生姓名']] = a; });
-    const stamp = now(), marks = {}; let added = 0, updated = 0, removed = 0;
+    const stamp = now(), marks = {}, changes = []; let added = 0, updated = 0, removed = 0;
     entries.forEach(e => {
       const r = findRoster(cls, e.branch, e.name);
       if (!r) throw new Error('名單中找不到：' + e.branch + ' ' + e.name);
       const k = e.branch + '|' + e.name, old = existing[k];
       let st = e.status;
-      if (st === '' || st == null) { if (old && old['狀態'] !== '△') { marks[k] = S.DEL; removed++; } return; }
+      if (st === '' || st == null) { if (old && old['狀態'] !== '△') { marks[k] = S.DEL; removed++; changes.push(e.name + ' ' + ST_L[old['狀態']] + '→取消'); } return; }
       if (st === 'V' && !L.formalOn(r, date)) st = '☆';
       if (['V', '☆', '缺', '△'].indexOf(st) < 0) return;
       if (old) {
         if (old['狀態'] === st) return;
         if (old['狀態'] === '△' && st === '缺') return;
         marks[k] = { '狀態': st, '補課日期': st === '△' ? old['補課日期'] : '', '點名人': au.name, '更新時間': stamp }; updated++;
-      } else { marks[k] = { '狀態': st, '補課日期': '', '點名人': au.name, '更新時間': stamp }; added++; }
+        changes.push(e.name + ' ' + (ST_L[old['狀態']] || old['狀態']) + '→' + ST_L[st]);
+      } else { marks[k] = { '狀態': st, '補課日期': '', '點名人': au.name, '更新時間': stamp }; added++; if (st === '缺') changes.push(e.name + ' 缺'); }
     });
-    if (Object.keys(marks).length) await S.W.setMarks(cls, date, marks);
+    if (Object.keys(marks).length) {
+      await S.W.setMarks(cls, date, marks);
+      await log('點名', updated || removed ? '修改點名' : '點名', cls, date,
+        '新增 ' + added + '、修改 ' + updated + '、取消 ' + removed + (changes.length ? '｜' + changes.join('、') : ''));
+    }
     return { added, updated, removed };
   };
 
@@ -98,6 +111,7 @@ export function createApi(S) {
     if (S.branches().indexOf(branch) < 0) throw new Error('分校錯誤');
     if (findRoster(cls, branch, name)) throw new Error(name + ' 已在名單中');
     await S.W.putRoster({ '班級': cls, '分校': branch, '學生姓名': name, '身分': '試聽', '加入日': L.normDateStr(date), '備註': '點名頁新增 ' + now() });
+    await log('名單', '現場新增試聽生', cls, branch + ' ' + name, '加入日 ' + L.normDateStr(date));
     return true;
   };
 
@@ -112,14 +126,18 @@ export function createApi(S) {
     const a = findMark(cls, date, branch, name);
     if (!a) throw new Error('找不到這筆缺課紀錄');
     const m = {}; m[branch + '|' + name] = { '狀態': '△', '補課日期': L.normDateStr(makeupDate) || today(), '點名人': au.name || a['點名人'], '更新時間': now() };
-    await S.W.setMarks(cls, date, m); return true;
+    await S.W.setMarks(cls, date, m);
+    await log('補課', '登記補課', cls, branch + ' ' + name, '缺課 ' + date + '，補課 ' + m[branch + '|' + name]['補課日期']);
+    return true;
   };
   A.apiUnmakeup = async function (cls, date, branch, name) {
     notAssistant(); canCls(cls); needBr(branch);
     const a = findMark(cls, date, branch, name);
     if (!a || a['狀態'] !== '△') throw new Error('這筆不是補課紀錄');
     const m = {}; m[branch + '|' + name] = { '狀態': '缺', '補課日期': '', '點名人': a['點名人'], '更新時間': now() };
-    await S.W.setMarks(cls, date, m); return true;
+    await S.W.setMarks(cls, date, m);
+    await log('補課', '取消補課', cls, branch + ' ' + name, '缺課 ' + date + '（原補課日 ' + a['補課日期'] + '）');
+    return true;
   };
   A.apiRecentMakeups = function () {
     notAssistant();
@@ -150,6 +168,7 @@ export function createApi(S) {
       s['備註'] = ('調課：原 ' + md(from) + (p.note ? '，' + p.note : '') + (s['備註'] ? '；' + s['備註'] : '')).slice(0, 200);
       await S.W.setSessions(cls, L.renumber(mine));
       const moved = await S.W.moveAttendance(cls, from, to);
+      await log('調課', '調課', cls, from + ' → ' + to, (p.note || '') + (moved ? '（搬移 ' + moved + ' 筆點名）' : ''));
       return { moved };
     }
     if (op === 'cancel') {
@@ -159,7 +178,9 @@ export function createApi(S) {
       s2['狀態'] = '停課'; s2['備註'] = ('停課' + (p.note ? '：' + p.note : '') + (s2['備註'] ? '；' + s2['備註'] : '')).slice(0, 200);
       const plan = L.planSessions(c, mine);
       await S.W.setSessions(cls, plan);
-      return { appended: plan.filter(x => !mine.some(m => m['日期'] === x['日期'])).map(x => x['日期']) };
+      const appended = plan.filter(x => !mine.some(m => m['日期'] === x['日期'])).map(x => x['日期']);
+      await log('調課', '停課順延', cls, s2['日期'], (p.note || '') + (appended.length ? '（順延到 ' + appended.join('、') + '）' : ''));
+      return { appended };
     }
     if (op === 'restore') {
       const d3 = L.normDateStr(p.date), s3 = find(d3);
@@ -174,6 +195,7 @@ export function createApi(S) {
         if (last['日期'] > t && !hasAtt(last['日期'])) { mine = mine.filter(x => x !== last); removed = last['日期']; }
       }
       await S.W.setSessions(cls, L.renumber(mine));
+      await log('調課', '恢復上課', cls, d3, removed ? '拿掉順延的 ' + removed : '');
       return { removed };
     }
     throw new Error('未知動作');
@@ -221,6 +243,7 @@ export function createApi(S) {
                               '正式起日': p.ident === '試聽' ? '' : date, '家長聯絡': p.contact || '', '備註': p.note || '' });
         added.push(cls);
       }
+      if (added.length) await log('名單', '新增學生', added.join('、'), p.branch + ' ' + name, (p.ident || '正式') + '，加入日 ' + date);
       return { added, skipped };
     }
     const r = findRoster(p.cls, p.branch, p.name);
@@ -236,7 +259,53 @@ export function createApi(S) {
     else if (act === 'contact') { r['家長聯絡'] = String(p.contact || ''); }
     else throw new Error('未知動作');
     await S.W.putRoster(r);
+    const ACT_L = { formal: '試聽轉正', quit: '退班', undoquit: '取消退班', undoformal: '取消轉正', notcontinue: '試聽不續班', contact: '修改家長聯絡' };
+    await log('名單', ACT_L[act], p.cls, p.branch + ' ' + p.name, act === 'contact' ? '' : (act.indexOf('undo') === 0 ? '' : '日期 ' + date));
     return true;
+  };
+
+  /** 批次新增學生：rows = [{學生姓名, 分校, 班級（多班用、或,分開）, 身分, 加入日, 家長聯絡, 備註}] */
+  A.apiBatchStudents = async function (rows, dry) {
+    needStaff();
+    const brs = S.branches(), classes = new Set(activeClasses().map(c => c['班級名稱'])), t = today();
+    const exists = new Set(S.read('ROSTER').map(r => r['班級'] + '|' + r['分校'] + '|' + r['學生姓名'])), seen = new Set();
+    const out = [], recs = [];
+    rows.forEach((f, i) => {
+      const name = String(f['學生姓名'] || '').trim();
+      const base = { line: f._line || i + 1, name, ok: false, msg: '', items: [] };
+      try {
+        if (!name) throw new Error('沒有學生姓名');
+        if (/[|｜]/.test(name)) throw new Error('姓名不能有「|」');
+        let br = String(f['分校'] || '').trim();
+        if (!br && au.role === 'branch') br = au.branch;
+        if (brs.indexOf(br) < 0) throw new Error('分校要是 ' + brs.join('／') + ' 其中一個');
+        if (!brOk(br)) throw new Error('你只能新增' + au.branch + '的學生');
+        const cl = String(f['班級'] || '').split(/[、,，;；\n]+/).map(s => s.trim()).filter(String);
+        if (!cl.length) throw new Error('沒有班級');
+        const bad = cl.filter(c => !classes.has(c));
+        if (bad.length) throw new Error('找不到班級：' + bad.join('、'));
+        const ident = String(f['身分'] || '正式').trim() === '試聽' ? '試聽' : '正式';
+        const join = f['加入日'] ? L.normDateStr(f['加入日']) : t;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(join)) throw new Error('加入日格式不對（例：2027-02-15）');
+        const added = [], skipped = [];
+        cl.forEach(c => {
+          const k = c + '|' + br + '|' + name;
+          if (exists.has(k) || seen.has(k)) { skipped.push(c); return; }
+          seen.add(k); added.push(c);
+          recs.push({ '班級': c, '分校': br, '學生姓名': name, '身分': ident, '加入日': join, '正式起日': ident === '試聽' ? '' : join,
+                      '家長聯絡': String(f['家長聯絡'] || ''), '備註': String(f['備註'] || ''), '續費開單日': '' });
+        });
+        if (!added.length) throw new Error('已經在 ' + skipped.join('、') + ' 的名單裡');
+        base.ok = true; base.msg = br + '｜' + ident + '｜' + added.join('、') + (skipped.length ? '（' + skipped.join('、') + ' 原本就有，略過）' : '');
+      } catch (e) { base.msg = e.message; }
+      out.push(base);
+    });
+    if (!dry && recs.length) {
+      await S.W.putRosterMany(recs);
+      await log('名單', '批次新增學生', [...new Set(recs.map(r => r['班級']))].join('、'), out.filter(x => x.ok).length + ' 位學生（' + recs.length + ' 筆）',
+        out.filter(x => x.ok).map(x => x.name).join('、'));
+    }
+    return out;
   };
 
   A.apiTrials = function () {
@@ -282,6 +351,8 @@ export function createApi(S) {
         else { r['續費開單日'] = p.on ? t : ''; await S.W.putRoster(r); }
       }
       if (recs.length) await S.W.addPayments(recs);
+      await log('續費', act === 'pay' ? '已續費' : (p.on ? '標記已開單' : '取消開單'), items.length === 1 ? items[0].cls : [...new Set(items.map(i => i.cls))].join('、'),
+        items.map(i => i.branch + ' ' + i.name).join('、'), act === 'pay' ? '每人 ' + n + ' 堂' + (Number(p.amount) ? '，金額 ' + Number(p.amount) : '') : '');
       return items.length;
     }
     if (act === 'opening') {
@@ -290,6 +361,7 @@ export function createApi(S) {
       const r2 = findR(p.cls, p.branch, p.name), b = L.balances([r2], sessions, pays, t)[0];
       if (b.hasPay) throw new Error('這位學生已有繳費紀錄，請改用「已續費」');
       await S.W.addPayment(payRec(p.cls, p.branch, p.name, b.used + rem, '', '期初（當時剩 ' + rem + ' 堂）'));
+      await log('續費', '設定期初堂數', p.cls, p.branch + ' ' + p.name, '剩 ' + rem + ' 堂（已繳 ' + (b.used + rem) + '）');
       return true;
     }
     if (act === 'classOpening') {
@@ -302,14 +374,16 @@ export function createApi(S) {
         if (b.hasPay || b.ident !== '正式' || !b.active || b.used <= 0) return;
         recs.push(payRec(b.cls, b.branch, b.name, b.used, '', '期初（整班繳到第 ' + no + ' 堂 ' + upto + '）'));
       });
-      if (recs.length) await S.W.addPayments(recs);
+      if (recs.length) { await S.W.addPayments(recs); await log('續費', '整班設定期初', p.cls, recs.length + ' 位', '已繳到第 ' + no + ' 堂（' + upto + '）'); }
       return recs.length;
     }
     if (act === 'undoPay') {
       needBr(p.branch);
       const rec = pays.filter(x => x._id === p.row)[0];
       if (!rec || rec['班級'] !== p.cls || rec['分校'] !== p.branch || rec['學生姓名'] !== p.name) throw new Error('資料已變動，請重新整理後再試');
-      await S.W.delPayment(rec._id); return true;
+      await S.W.delPayment(rec._id);
+      await log('續費', '取消繳費紀錄', rec['班級'], rec['分校'] + ' ' + rec['學生姓名'], rec['堂數'] + ' 堂，登記日 ' + rec['登記日'] + (rec['備註'] ? '（' + rec['備註'] + '）' : ''));
+      return true;
     }
     throw new Error('未知動作');
   };
@@ -324,6 +398,7 @@ export function createApi(S) {
         if (cd < L.lastDayOf(month) || cd >= L.lastDayOf(L.nextMonth(month))) throw new Error('截止日要在 ' + L.lastDayOf(month) + ' 到 ' + L.addDays(L.lastDayOf(L.nextMonth(month)), -1) + ' 之間');
         const c = Object.assign({}, S.conf()['補課統計至'] || {}); c[month] = cd;
         await S.W.saveSettings({ '補課統計至': c });
+        await log('月結', '設定補課統計截止日', '', month, (cur ? cur + ' → ' : '') + cd);
       }
     }
     return A.monthlyData(month);
@@ -379,6 +454,14 @@ export function createApi(S) {
       students: S.read('ROSTER').filter(r => r['班級'] === c['班級名稱']).length
     })).sort((a, b) => (a.f['狀態'] === '結束') - (b.f['狀態'] === '結束') || (a.f['班級名稱'] < b.f['班級名稱'] ? -1 : 1));
   };
+  /** 星期可以填「一」「週一」「星期一」「1」～「7」，空白時由開課日推算 */
+  const normWeekday = (w, start) => {
+    w = String(w == null ? '' : w).trim().replace(/^(週|星期|禮拜)/, '');
+    if (/^[1-7]$/.test(w)) w = '一二三四五六日'.charAt(+w - 1);
+    if (w === '天') w = '日';
+    if (!w && /^\d{4}-\d{2}-\d{2}$/.test(start)) w = L.WEEK.charAt(L.weekdayOf(start));
+    return w;
+  };
   A.adminSaveClass = async function (id, f) {
     needBoss();
     const name = String(f['班級名稱'] || '').trim();
@@ -389,18 +472,64 @@ export function createApi(S) {
     const old = id ? S.read('CLASS').filter(c => c._id === id)[0] : null;
     if (old && old['班級名稱'] !== name && (S.read('ROSTER').some(r => r['班級'] === old['班級名稱']) || S.read('ATT').some(a => a['班級'] === old['班級名稱'])))
       throw new Error('這個班已經有名單或點名紀錄，不能改名（可新增一個班）');
-    if (!/^[一二三四五六日]$/.test(f['星期'])) throw new Error('請選星期');
     const start = L.normDateStr(f['開課日']);
+    f = Object.assign({}, f, { '星期': normWeekday(f['星期'], start) });
+    if (!/^[一二三四五六日]$/.test(f['星期'])) throw new Error('請選星期');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) throw new Error('請填開課日');
     if (L.WEEK.charAt(L.weekdayOf(start)) !== f['星期']) throw new Error('開課日 ' + start + ' 不是星期' + f['星期']);
     const n = Math.round(Number(f['預計堂數']));
     if (!(n > 0 && n <= 200)) throw new Error('預計堂數要是 1～200');
+    if (!String(f['薪資規則'] || '').trim()) throw new Error('請填薪資規則');
     L.parseRule(f['薪資規則']); // 規則寫錯會在這裡丟出錯誤
     const fields = { '班級名稱': name, '星期': f['星期'], '時段': String(f['時段'] || ''), '開課日': start, '預計堂數': n,
                      '停課日期': String(f['停課日期'] || ''), '講師': String(f['講師'] || ''), '狀態': f['狀態'] === '結束' ? '結束' : '進行中', '備註': String(f['備註'] || '') };
     if (!old) fields.sessions = [];
-    return S.W.saveClass(id, fields, String(f['薪資規則']).trim());
+    const newId = await S.W.saveClass(id, fields, String(f['薪資規則']).trim());
+    const diff = old ? Object.keys(fields).filter(k => k !== 'sessions' && String(old[k] == null ? '' : old[k]) !== String(fields[k])).map(k => k + '：' + (old[k] || '') + ' → ' + fields[k]) : [];
+    if (old && String(old['薪資規則'] || '') !== String(f['薪資規則']).trim()) diff.push('薪資規則：' + (old['薪資規則'] || '') + ' → ' + String(f['薪資規則']).trim());
+    await log('管理', old ? '修改班級' : '新增班級', name, '', old ? (diff.join('；') || '沒有變更') : '週' + fields['星期'] + ' ' + fields['時段'] + '，' + n + ' 堂，' + String(f['薪資規則']).trim());
+    return newId;
   };
+  /** 批次新增班級：rows = [{班級名稱, 星期, 時段, 開課日, 預計堂數, 薪資規則, 講師, 停課日期, 備註}]
+   *  dry = true 只檢查不寫入；回傳每列結果 */
+  A.adminBatchClasses = async function (rows, dry, gen) {
+    needBoss();
+    const names = new Set(S.read('CLASS').map(c => c['班級名稱'])), seen = new Set(), out = [];
+    rows.forEach((f, i) => {
+      const r = { line: f._line || i + 1, name: String(f['班級名稱'] || '').trim(), ok: false, msg: '' };
+      try {
+        if (!r.name) throw new Error('沒有班級名稱');
+        if (names.has(r.name)) throw new Error('已經有這個班級');
+        if (seen.has(r.name)) throw new Error('和上面重複');
+        const start = L.normDateStr(f['開課日']);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) throw new Error('開課日格式不對（例：2027-02-15）');
+        const wd = normWeekday(f['星期'], start);
+        if (!/^[一二三四五六日]$/.test(wd)) throw new Error('星期看不懂');
+        if (L.WEEK.charAt(L.weekdayOf(start)) !== wd) throw new Error('開課日 ' + start + ' 是星期' + L.WEEK.charAt(L.weekdayOf(start)) + '，不是星期' + wd);
+        const n = Math.round(Number(f['預計堂數']));
+        if (!(n > 0 && n <= 200)) throw new Error('預計堂數要是 1～200');
+        if (!String(f['薪資規則'] || '').trim()) throw new Error('沒有薪資規則');
+        L.parseRule(f['薪資規則']);
+        r.f = Object.assign({}, f, { '班級名稱': r.name, '星期': wd, '開課日': start, '預計堂數': n });
+        r.ok = true; r.msg = '週' + wd + ' ' + (f['時段'] || '') + '，' + start + ' 起 ' + n + ' 堂';
+        seen.add(r.name);
+      } catch (e) { r.msg = e.message; }
+      out.push(r);
+    });
+    if (dry) return out;
+    let done = 0;
+    for (const r of out.filter(x => x.ok)) {
+      const f = r.f;
+      const fields = { '班級名稱': f['班級名稱'], '星期': f['星期'], '時段': String(f['時段'] || ''), '開課日': f['開課日'], '預計堂數': f['預計堂數'],
+                       '停課日期': String(f['停課日期'] || ''), '講師': String(f['講師'] || ''), '狀態': '進行中', '備註': String(f['備註'] || ''), sessions: [] };
+      if (gen) fields.sessions = L.planSessions(fields, []).map(x => ({ '日期': x['日期'], '堂次': x['堂次'], '狀態': x['狀態'], '備註': '' }));
+      await S.W.saveClass(null, fields, String(f['薪資規則']).trim());
+      done++;
+    }
+    if (done) await log('管理', '批次新增班級', out.filter(x => x.ok).map(x => x.name).join('、'), done + ' 班', gen ? '已產生堂次' : '未產生堂次');
+    return out.map(x => ({ line: x.line, name: x.name, ok: x.ok, msg: x.msg, imported: x.ok }));
+  };
+
   A.adminGenSessions = async function (id) {
     needBoss();
     const c = S.read('CLASS').filter(x => x._id === id)[0];
@@ -408,6 +537,7 @@ export function createApi(S) {
     const mine = S.read('SESS').filter(s => s['班級'] === c['班級名稱']);
     const plan = L.planSessions(c, mine);
     await S.W.setSessions(c['班級名稱'], plan);
+    if (plan.length !== mine.length) await log('管理', '產生堂次', c['班級名稱'], '', '新增 ' + (plan.length - mine.length) + ' 堂，共 ' + plan.filter(s => s['狀態'] === '上課').length + ' 堂');
     return { total: plan.filter(s => s['狀態'] === '上課').length, added: plan.length - mine.length };
   };
   A.adminDeleteClass = async function (id) {
@@ -416,7 +546,9 @@ export function createApi(S) {
     if (!c) throw new Error('找不到班級');
     if (S.read('ATT').some(a => a['班級'] === c['班級名稱']) || S.read('ROSTER').some(r => r['班級'] === c['班級名稱']))
       throw new Error('這個班已經有名單或點名紀錄，不能刪除；請改成「結束」');
-    await S.W.deleteClass(id); return true;
+    await S.W.deleteClass(id);
+    await log('管理', '刪除班級', c['班級名稱'], '', '');
+    return true;
   };
 
   A.adminUsers = function () {
@@ -439,12 +571,22 @@ export function createApi(S) {
     const uid = await B.auth.createUser(email, pw);
     Object.assign(data, { email, '建立時間': now() });
     await S.W.setUser(uid, data);
+    await log('管理', '新增帳號', '', data['姓名'] + '（' + email + '）', ROLE_L[data['角色']] + (data['分校'] ? '・' + data['分校'] : ''));
     return uid;
   };
   A.adminUpdateUser = async function (uid, f) {
     needBoss();
     if (uid === au.uid && (f.role !== 'boss' || f.active === false)) throw new Error('不能把自己降級或停用');
-    await S.W.setUser(uid, cleanUser(f)); return true;
+    const before = S.read('ACC').filter(u => u.uid === uid)[0] || {}, after = cleanUser(f);
+    await S.W.setUser(uid, after);
+    const ch = [];
+    if (before['角色'] !== after['角色']) ch.push('角色 ' + (ROLE_L[before['角色']] || '') + '→' + ROLE_L[after['角色']]);
+    if ((before['分校'] || '') !== after['分校']) ch.push('分校 ' + (before['分校'] || '—') + '→' + (after['分校'] || '—'));
+    if ((before['可點班級'] || []).join() !== after['可點班級'].join()) ch.push('可點班級 → ' + (after['可點班級'].join('、') || '全部'));
+    if ((before['啟用'] === true) !== after['啟用']) ch.push(after['啟用'] ? '啟用' : '停用');
+    if ((before['姓名'] || '') !== after['姓名']) ch.push('姓名 ' + (before['姓名'] || '') + '→' + after['姓名']);
+    await log('管理', '修改帳號', '', after['姓名'] + '（' + (before.email || '') + '）', ch.join('；') || '沒有變更');
+    return true;
   };
 
   A.adminSaveSettings = async function (f) {
@@ -456,7 +598,16 @@ export function createApi(S) {
     await S.W.saveSettings({ '分校': br, '補課期限天數': num(f['補課期限天數'], 14, 1, 365), '續費提醒堂數': num(f['續費提醒堂數'], 6, 0, 100),
                              '預設續費堂數': num(f['預設續費堂數'], 12, 1, 200), '缺課追蹤起始日': /^\d{4}-\d{2}-\d{2}$/.test(since) ? since : '',
                              '網頁標題': String(f['網頁標題'] || '團班點名').slice(0, 40) });
+    await log('管理', '修改系統設定', '', '', '分校 ' + br.join('、'));
     return true;
+  };
+
+  /** 操作紀錄（主管）：最近 days 天，最多 1000 筆 */
+  A.adminLogs = async function (days, B) {
+    needBoss();
+    const since = L.addDays(today(), -Math.max(1, Math.min(366, Number(days) || 30)) + 1);
+    const docs = await B.db.query('logs', [['時間', '>=', since]], ['時間', 'desc'], 1000);
+    return docs.map(d => d.data);
   };
 
   A._ctx = { au, S, isStaff, allowed, brOk };

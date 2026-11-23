@@ -6,7 +6,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, getDoc, query, where, onSnapshot, setDoc, deleteDoc, writeBatch, deleteField
+  collection, doc, getDoc, getDocs, query, where, orderBy, limit, onSnapshot, setDoc, deleteDoc, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 export const DEL = Symbol('DEL');
@@ -85,6 +85,14 @@ export function createFirebaseBackend(config) {
       async set(col, id, data, merge) { try { await setDoc(doc(db, col, id), conv(data), merge ? { merge: true } : {}); } catch (e) { throw nice(e); } },
       async del(col, id) { try { await deleteDoc(doc(db, col, id)); } catch (e) { throw nice(e); } },
       /** ops: [{op:'set'|'del', col, id, data, merge}]，一次最多 500 筆 */
+      /** 一次性查詢：filters 同 listen；order = [欄位, 'asc'|'desc']；max = 筆數上限 */
+      async query(col, filters, order, max) {
+        const parts = (filters || []).map(f => where(f[0], f[1], f[2]));
+        if (order) parts.push(orderBy(order[0], order[1] || 'asc'));
+        if (max) parts.push(limit(max));
+        try { const snap = await getDocs(query(collection(db, col), ...parts)); return snap.docs.map(d => ({ id: d.id, data: d.data() })); }
+        catch (e) { throw nice(e); }
+      },
       async batch(ops) {
         for (let i = 0; i < ops.length; i += 450) {
           const b = writeBatch(db);

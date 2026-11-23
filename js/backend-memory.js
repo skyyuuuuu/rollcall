@@ -26,7 +26,7 @@ export function createMemoryBackend(seed) {
   const users = [];         // {uid, email, pw}
   let current = null, authCbs = [], seq = 0;
   const C = name => (cols[name] = cols[name] || new Map());
-  const match = (d, filters) => (filters || []).every(f => f[1] === '==' ? d[f[0]] === f[2] : true);
+  const match = (d, filters) => (filters || []).every(f => f[1] === '==' ? d[f[0]] === f[2] : f[1] === '>=' ? d[f[0]] >= f[2] : f[1] === '<=' ? d[f[0]] <= f[2] : true);
   const fire = col => listeners.filter(l => l.col === col).forEach(l => {
     if (l.id !== undefined) l.cb(C(col).has(l.id) ? clone(C(col).get(l.id)) : null);
     else l.cb([...C(col)].filter(([, d]) => match(d, l.filters)).map(([id, d]) => ({ id, data: clone(d) })));
@@ -73,6 +73,11 @@ export function createMemoryBackend(seed) {
     db: {
       listen(col, filters, cb) { const l = { col, filters, cb }; listeners.push(l); setTimeout(() => fire(col), 0); return () => listeners.splice(listeners.indexOf(l), 1); },
       listenDoc(col, id, cb) { const l = { col, id, cb }; listeners.push(l); setTimeout(() => fire(col), 0); return () => listeners.splice(listeners.indexOf(l), 1); },
+      async query(col, filters, order, max) {
+        let rows = [...C(col)].filter(([, d]) => match(d, filters)).map(([id, d]) => ({ id, data: clone(d) }));
+        if (order) rows.sort((a, b) => (a.data[order[0]] < b.data[order[0]] ? -1 : a.data[order[0]] > b.data[order[0]] ? 1 : 0) * (order[1] === 'desc' ? -1 : 1));
+        return max ? rows.slice(0, max) : rows;
+      },
       async get(col, id) { return C(col).has(id) ? clone(C(col).get(id)) : null; },
       newId() { return 'id' + (++seq) + Math.random().toString(36).slice(2, 8); },
       async set(col, id, data, merge) { write({ op: 'set', col, id, data, merge }); fire(col); },

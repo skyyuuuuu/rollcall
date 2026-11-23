@@ -182,6 +182,7 @@ label.ck{display:flex;gap:6px;align-items:center;padding:4px 0;font-size:15px}
         <div id="nsClasses" style="margin-top:8px"></div>
         <button class="btn" style="margin-top:8px" onclick="addStudent()">新增到勾選的班級</button>
       </div>
+      <div class="card"><details id="bsBox" ontoggle="if(this.open)batchStudentsForm()"><summary><b>批次新增學生</b>（從 Excel 貼上或上傳檔案）</summary><div id="bsForm"></div></details></div>
     </section>
 
     <!-- 續費（行政） -->
@@ -222,7 +223,8 @@ label.ck{display:flex;gap:6px;align-items:center;padding:4px 0;font-size:15px}
       <div class="card"><div class="chips" id="admTabs">
         <button class="chip on" data-c="cls" onclick="admTab('cls')">班級</button>
         <button class="chip" data-c="usr" onclick="admTab('usr')">帳號</button>
-        <button class="chip" data-c="set" onclick="admTab('set')">設定</button></div></div>
+        <button class="chip" data-c="set" onclick="admTab('set')">設定</button>
+        <button class="chip" data-c="log" onclick="admTab('log')">操作紀錄</button></div></div>
       <div id="adm-cls">
         <div class="card" id="clsList"></div>
         <div class="card" id="clsForm"></div>
@@ -232,6 +234,20 @@ label.ck{display:flex;gap:6px;align-items:center;padding:4px 0;font-size:15px}
         <div class="card" id="usrForm"></div>
       </div>
       <div id="adm-set" class="hide"><div class="card" id="setForm"></div></div>
+      <div id="adm-log" class="hide">
+        <div class="card">
+          <div class="row">
+            <select id="lgDays" onchange="loadLogs()" style="flex:0 0 auto"><option value="7">最近 7 天</option><option value="30" selected>最近 30 天</option><option value="90">最近 90 天</option><option value="366">最近一年</option></select>
+            <select id="lgWho" onchange="renderLogs()"></select>
+            <select id="lgCat" onchange="renderLogs()"></select>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <input id="lgQ" placeholder="搜尋班級、學生、內容…" oninput="renderLogs()" style="flex:1;min-width:140px">
+            <button class="btn sm ghost" onclick="dlLogs()">下載 Excel</button>
+          </div>
+        </div>
+        <div class="card" id="lgList"></div>
+      </div>
     </section>
   </main>
 
@@ -276,7 +292,7 @@ window.UI={
   loading:function(msg){ show('msgView'); $('msgTitle').innerHTML='<span class="spin"></span>'; $('msgBody').textContent=msg; $('msgOut').classList.add('hide'); },
   fatal:function(t,body,canOut){ show('msgView'); $('msgTitle').textContent=t; $('msgBody').innerHTML=body; $('msgOut').classList.toggle('hide',!canOut); },
   boot:function(){
-    show('app'); var b=window.API.apiLogin(); S.role=b.role; S.boot=b; S.who=b.name; setTitle(b.title||'團班點名'); start();
+    show('app'); if(window._justLogin){ window._justLogin=false; window.API.logLogin(); } var b=window.API.apiLogin(); S.role=b.role; S.boot=b; S.who=b.name; setTitle(b.title||'團班點名'); start();
     if(S.role==='boss'&&!b.classes.length){ tab('adm'); toast('還沒有班級，先在「管理 → 班級」新增'); }
     if(b.unknownClasses&&b.unknownClasses.length) setTimeout(function(){ toast('帳號裡有找不到的班級：'+b.unknownClasses.join('、')+'，請主管確認名稱'); },600);
   }
@@ -285,6 +301,7 @@ function login(){
   var em=$('email').value.trim(), pw=$('pw').value;
   if(!em||!pw){ $('loginErr').textContent='請輸入 Email 和密碼'; return; }
   $('loginErr').innerHTML='<span class="spin"></span>';
+  window._justLogin=true;
   BK.auth.signIn(em,pw).then(function(){ store('roll_email',em); $('pw').value=''; }).catch(function(e){ $('loginErr').textContent=e.message; });
 }
 function demoLogin(em,pw){ $('email').value=em; $('pw').value=pw; login(); }
@@ -696,8 +713,8 @@ window.addEventListener('beforeunload',function(e){ if(dirtyCount()){ e.preventD
 var ROLE_OPTS=[['boss','主管'],['branch','分校行政'],['teacher','老師'],['assistant','助教']];
 function admTab(t){
   S.admTab=t; markChip('admTabs',t);
-  ['cls','usr','set'].forEach(function(x){ $('adm-'+x).classList.toggle('hide',x!==t); });
-  if(t==='cls') renderClasses(); if(t==='usr') renderUsers(); if(t==='set') renderSettings();
+  ['cls','usr','set','log'].forEach(function(x){ $('adm-'+x).classList.toggle('hide',x!==t); });
+  if(t==='cls') renderClasses(); if(t==='usr') renderUsers(); if(t==='set') renderSettings(); if(t==='log') loadLogs();
 }
 function refreshBoot(){
   var b=window.API.apiLogin(); var keep=S.boot; S.boot=b; setTitle(b.title||'團班點名');
@@ -713,7 +730,7 @@ function val(id){ var e=$(id); return e? e.value : ''; }
 // 班級
 function renderClasses(){
   var L=window.API.adminClasses();
-  $('clsList').innerHTML='<div class="row" style="justify-content:space-between"><b>班級（'+L.length+'）</b><button class="btn sm" onclick="editClass(\'\')">＋ 新增班級</button></div>'+
+  $('clsList').innerHTML='<div class="row" style="justify-content:space-between"><b>班級（'+L.length+'）</b><span><button class="btn sm ghost" onclick="batchClassesForm()">批次新增</button> <button class="btn sm" onclick="editClass(\'\')">＋ 新增班級</button></span></div>'+
     (L.length? L.map(function(c){ var f=c.f;
       return '<div class="list-item"'+(f['狀態']==='結束'?' style="opacity:.55"':'')+'><div class="grow"><b>'+esc(f['班級名稱'])+'</b>'+(f['狀態']==='結束'?'<span class="tag">已結束</span>':'')+
         '<div class="muted">週'+esc(f['星期'])+' '+esc(f['時段'])+'　'+esc(f['講師']||'未填講師')+'　'+c.sessions+'/'+esc(f['預計堂數'])+' 堂'+(c.stopped?'（停課 '+c.stopped+'）':'')+'　學生 '+c.students+'</div>'+
@@ -807,6 +824,163 @@ function renderSettings(){
 function saveSettingsForm(){
   call('adminSaveSettings',null,{'網頁標題':val('sf_title'),'分校':val('sf_br'),'補課期限天數':val('sf_lim'),'缺課追蹤起始日':val('sf_since'),'續費提醒堂數':val('sf_th'),'預設續費堂數':val('sf_def')})
     .then(function(){ toast('設定已儲存'); refreshBoot(); });
+}
+
+// 操作紀錄
+var LOG_CATS=['點名','補課','名單','續費','調課','月結','管理','登入'];
+function loadLogs(){
+  $('lgList').innerHTML='<div class="empty"><span class="spin"></span></div>';
+  call('adminLogs',null,$('lgDays').value,BK).then(function(L){
+    S.logs=L;
+    var who=[]; L.forEach(function(x){ if(who.indexOf(x['姓名'])<0) who.push(x['姓名']); });
+    var keepW=$('lgWho').value, keepC=$('lgCat').value;
+    $('lgWho').innerHTML='<option value="">全部人員</option>'+who.map(function(w){return '<option'+(w===keepW?' selected':'')+'>'+esc(w)+'</option>';}).join('');
+    $('lgCat').innerHTML='<option value="">全部類別</option>'+LOG_CATS.map(function(c){return '<option'+(c===keepC?' selected':'')+'>'+c+'</option>';}).join('');
+    renderLogs();
+  }).catch(function(){ $('lgList').innerHTML='<div class="empty">讀取失敗</div>'; });
+}
+function filteredLogs(){
+  var w=$('lgWho').value, c=$('lgCat').value, q=$('lgQ').value.trim();
+  return (S.logs||[]).filter(function(x){
+    return (!w||x['姓名']===w) && (!c||x['類別']===c) && (!q||[x['動作'],x['班級'],x['對象'],x['內容']].join(' ').indexOf(q)>=0);
+  });
+}
+function renderLogs(){
+  var L=filteredLogs(), CAT_CLS={'點名':'','補課':'mk','名單':'tr','續費':'mk','調課':'tr','月結':'','管理':'mk','登入':''};
+  $('lgList').innerHTML='<div class="muted" style="margin-bottom:4px">共 '+L.length+' 筆'+(S.logs&&S.logs.length>=1000?'（只顯示最新 1000 筆，請縮短期間）':'')+'</div>'+
+    (L.length? L.map(function(x){
+      return '<div class="list-item" style="align-items:flex-start"><div class="grow">'+
+        '<div><b>'+esc(x['動作'])+'</b><span class="tag '+(CAT_CLS[x['類別']]||'')+'">'+esc(x['類別'])+'</span>'+(x['班級']?'<span class="tag">'+esc(x['班級'])+'</span>':'')+'</div>'+
+        (x['對象']?'<div>'+esc(x['對象'])+'</div>':'')+
+        (x['內容']?'<div class="muted" style="white-space:normal;word-break:break-all">'+esc(x['內容'])+'</div>':'')+
+        '</div><div class="muted" style="text-align:right;font-size:13px;white-space:nowrap">'+esc(x['時間'].slice(5,16))+'<br>'+esc(x['姓名'])+'<br>'+esc(x['角色'])+'</div></div>';
+    }).join('') : '<div class="empty">這段期間沒有符合的紀錄</div>');
+}
+function dlLogs(){
+  xl(function(){
+    if(!window.XLSX) throw new Error('Excel 元件還沒載入，請稍後再試');
+    var rows=[['時間','姓名','角色','類別','動作','班級','對象','內容']].concat(filteredLogs().map(function(x){ return [x['時間'],x['姓名'],x['角色'],x['類別'],x['動作'],x['班級'],x['對象'],x['內容']]; }));
+    var wb=XLSX.utils.book_new(), ws=XLSX.utils.aoa_to_sheet(rows); ws['!cols']=[{wch:19},{wch:10},{wch:8},{wch:6},{wch:14},{wch:18},{wch:24},{wch:60}];
+    XLSX.utils.book_append_sheet(wb,ws,'操作紀錄');
+    var data=XLSX.write(wb,{bookType:'xlsx',type:'array'}), url=URL.createObjectURL(new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+    var a=document.createElement('a'); a.href=url; a.download='操作紀錄_'+S.boot.today+'.xlsx'; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); },1500);
+  });
+}
+
+// ── 批次新增（班級、學生）：從 Excel 複製貼上，或上傳 .xlsx / .csv ──
+var BC_COLS=['班級名稱','星期','時段','開課日','預計堂數','薪資規則','講師','停課日期','備註'];
+var BS_COLS=['學生姓名','分校','班級','身分','加入日','家長聯絡','備註'];
+var COL_ALIAS={'姓名':'學生姓名','學生':'學生姓名','名字':'學生姓名','校區':'分校','班別':'班級','班級名稱':'班級','電話':'家長聯絡','家長電話':'家長聯絡','聯絡電話':'家長聯絡'};
+var CLS_ALIAS={'班級':'班級名稱','班別':'班級名稱','開始日':'開課日','堂數':'預計堂數','老師':'講師','薪資':'薪資規則','上課時間':'時段'};
+function pad2(n){ return ('0'+n).slice(-2); }
+function cellStr(v){
+  if(v==null) return '';
+  if(v instanceof Date) return v.getFullYear()+'-'+pad2(v.getMonth()+1)+'-'+pad2(v.getDate());
+  return String(v).trim();
+}
+function parseGrid(text){
+  var lines=String(text||'').replace(/\r/g,'').split('\n').filter(function(l){ return l.trim(); });
+  var tab=lines.some(function(l){ return l.indexOf('\t')>=0; });
+  return lines.map(function(l){ return l.split(tab?'\t':/[,，]/).map(function(c){ return c.trim().replace(/^"|"$/g,''); }); });
+}
+/** 第一列若是標題就照標題對欄位，否則照預設欄位順序 */
+function gridToRows(grid, cols, isClass){
+  if(!grid.length) return [];
+  var al=isClass?CLS_ALIAS:COL_ALIAS;
+  var head=grid[0].map(function(h){ h=cellStr(h).replace(/\s/g,''); return cols.indexOf(h)>=0? h : (al[h]||h); });
+  var hasHead=head.some(function(h){ return cols.indexOf(h)>=0; });
+  var map=hasHead? head : cols, start=hasHead?1:0;
+  return grid.slice(start).map(function(r,i){
+    var o={_line:i+start+1};
+    map.forEach(function(k,j){ if(cols.indexOf(k)>=0) o[k]=cellStr(r[j]); });
+    return o;
+  }).filter(function(o){ return cols.some(function(k){ return o[k]; }); });
+}
+function readGridFile(file){
+  return new Promise(function(ok,bad){
+    var fr=new FileReader();
+    fr.onerror=function(){ bad(new Error('讀檔失敗')); };
+    if(/\.csv$/i.test(file.name)){ fr.onload=function(){ ok(parseGrid(String(fr.result).replace(/^﻿/,''))); }; fr.readAsText(file,'utf-8'); return; }
+    if(!window.XLSX) return bad(new Error('Excel 元件還沒載入，請稍後再試'));
+    fr.onload=function(){
+      try{ var wb=XLSX.read(new Uint8Array(fr.result),{type:'array',cellDates:true}); var ws=wb.Sheets[wb.SheetNames[0]];
+        ok(XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''})); }catch(e){ bad(new Error('看不懂這個檔案：'+e.message)); }
+    };
+    fr.readAsArrayBuffer(file);
+  });
+}
+function dlTemplate(name, rows){
+  xl(function(){
+    if(!window.XLSX) throw new Error('Excel 元件還沒載入，請稍後再試');
+    var wb=XLSX.utils.book_new(), ws=XLSX.utils.aoa_to_sheet(rows); ws['!cols']=rows[0].map(function(){ return {wch:16}; });
+    XLSX.utils.book_append_sheet(wb,ws,'範本');
+    var data=XLSX.write(wb,{bookType:'xlsx',type:'array'}), url=URL.createObjectURL(new Blob([data],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+    var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); },1500);
+  });
+}
+function batchBox(prefix, cols, help){
+  return '<p class="muted" style="margin:6px 0">'+help+'</p>'+
+    '<p class="muted" style="margin:6px 0;font-size:13px">欄位順序：'+cols.join('｜')+'（第一列放標題的話，順序可以不一樣）</p>'+
+    '<div class="row"><button class="btn sm ghost" onclick="'+prefix+'Template()">下載範本</button>'+
+    '<label class="btn sm ghost" style="cursor:pointer">上傳 Excel／CSV<input type="file" id="'+prefix+'File" accept=".xlsx,.xls,.csv" class="hide" onchange="'+prefix+'FromFile(this)"></label></div>'+
+    '<textarea id="'+prefix+'Text" rows="6" style="width:100%;margin-top:8px;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:8px" placeholder="從 Excel 選取表格（可含標題列）→ 複製 → 貼在這裡"></textarea>'+
+    '<div id="'+prefix+'Opts"></div>'+
+    '<div class="row" style="margin-top:8px"><button class="btn ghost" onclick="'+prefix+'Check()">檢查</button><button class="btn" id="'+prefix+'Go" onclick="'+prefix+'Import()" disabled>匯入</button></div>'+
+    '<div id="'+prefix+'Prev" style="margin-top:8px"></div>';
+}
+function showPreview(prefix, res, unit){
+  var okN=res.filter(function(r){return r.ok;}).length, badN=res.length-okN;
+  $(prefix+'Prev').innerHTML='<div class="muted" style="margin-bottom:4px">可以匯入 <b style="color:var(--ok)">'+okN+'</b> '+unit+(badN?'，<b style="color:var(--bad)">'+badN+'</b> 列有問題（不會匯入，修正後再檢查一次）':'')+'</div>'+
+    '<div class="tbl-wrap"><table><thead><tr><th>列</th><th class="nm">名稱</th><th></th><th style="text-align:left">說明</th></tr></thead><tbody>'+
+    res.map(function(r){ return '<tr><td>'+r.line+'</td><td class="nm">'+esc(r.name||'—')+'</td><td style="color:'+(r.ok?'var(--ok)':'var(--bad)')+'">'+(r.ok?'✓':'✗')+'</td><td style="text-align:left;white-space:normal">'+esc(r.msg)+'</td></tr>'; }).join('')+
+    '</tbody></table></div>';
+  var go=$(prefix+'Go'); go.disabled=!okN; go.textContent='匯入 '+okN+' '+unit;
+}
+
+// 班級
+function batchClassesForm(){
+  $('clsForm').innerHTML='<b>批次新增班級</b>'+batchBox('bc',BC_COLS,'一列一個班。星期可以留空（會照開課日自動判斷）；停課日期、備註可以不填。');
+  $('bcOpts').innerHTML='<label class="ck"><input type="checkbox" id="bcGen" checked> 匯入後直接產生堂次</label>';
+  $('clsForm').scrollIntoView({behavior:'smooth'});
+}
+function bcTemplate(){ dlTemplate('批次新增班級_範本.xlsx',[BC_COLS,['國一數學班(一)','一','1630-1900','2027-02-15',20,'每人1050*0.4','王老師','2027-04-05',''],['國一英文班(五)','','1630-1900','2027-02-19',20,'11+:2000, 4-10:每人200, 0-3:0','林老師','','']]); }
+function bcFromFile(inp){ var f=inp.files[0]; if(!f) return; readGridFile(f).then(function(g){ S.bcRows=gridToRows(g,BC_COLS,true); $('bcText').value=''; bcCheck(true); }).catch(function(e){ toast(e.message); }); inp.value=''; }
+function bcCheck(fromFile){
+  if(fromFile!==true) S.bcRows=gridToRows(parseGrid($('bcText').value),BC_COLS,true);
+  if(!S.bcRows.length) return toast('沒有讀到資料');
+  call('adminBatchClasses',null,S.bcRows,true).then(function(res){ showPreview('bc',res,'班'); });
+}
+function bcImport(){
+  if(!confirm('確定'+$('bcGo').textContent+'？')) return;
+  $('bcGo').disabled=true;
+  call('adminBatchClasses',null,S.bcRows,false,$('bcGen').checked).then(function(res){
+    toast('已新增 '+res.filter(function(r){return r.imported;}).length+' 班'); renderClasses(); refreshBoot();
+  }).catch(function(){ $('bcGo').disabled=false; });
+}
+
+// 學生
+function batchStudentsForm(){
+  if($('bsText')) return;
+  var br=S.role==='branch'? '分校可以留空（會自動填'+S.boot.branch+'）；' : '';
+  $('bsForm').innerHTML=batchBox('bs',BS_COLS,'一列一位學生。同一位學生上好幾個班，班級欄用「、」分開；'+br+'身分留空 = 正式，加入日留空 = 今天。');
+}
+function bsTemplate(){
+  var b=S.role==='branch'? S.boot.branch : (S.boot.branches[0]||''), c=S.boot.classes.map(function(x){return x.name;});
+  dlTemplate('批次新增學生_範本.xlsx',[BS_COLS,['王小明',b,c.slice(0,2).join('、')||'國一數學班(一)','正式',S.boot.today,'0912-345-678',''],['李小華',b,c[0]||'國一數學班(一)','試聽','','','朋友介紹']]);
+}
+function bsFromFile(inp){ var f=inp.files[0]; if(!f) return; readGridFile(f).then(function(g){ S.bsRows=gridToRows(g,BS_COLS,false); $('bsText').value=''; bsCheck(true); }).catch(function(e){ toast(e.message); }); inp.value=''; }
+function bsCheck(fromFile){
+  if(fromFile!==true) S.bsRows=gridToRows(parseGrid($('bsText').value),BS_COLS,false);
+  if(!S.bsRows.length) return toast('沒有讀到資料');
+  call('apiBatchStudents',null,S.bsRows,true).then(function(res){ showPreview('bs',res,'位'); });
+}
+function bsImport(){
+  if(!confirm('確定'+$('bsGo').textContent+'學生？')) return;
+  $('bsGo').disabled=true;
+  call('apiBatchStudents',null,S.bsRows,false).then(function(res){
+    toast('已新增 '+res.filter(function(r){return r.ok;}).length+' 位學生'); $('bsText').value=''; $('bsPrev').innerHTML='';
+    if(roCls) loadRo(roCls); loadTrials();
+  }).catch(function(){ $('bsGo').disabled=false; });
 }
 
 </script>

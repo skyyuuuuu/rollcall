@@ -62,6 +62,13 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
+    // 操作紀錄：每個人只能用自己的身分新增，不能修改或刪除；只有主管看得到
+    match /logs/{id} {
+      allow read: if isBoss();
+      allow create: if active() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
     // 繳費紀錄：只有主管和分校行政（限自己分校）
     match /payments/{id} {
       allow read: if isStaff() && brOk(resource.data);

@@ -314,6 +314,10 @@ function splitCls_(v) { return String(v || '').split(/[,，、;；\n]+/).map(nor
 
 /** 台北時間的今天／現在 */
 export function todayTPE() { return new Intl.DateTimeFormat('sv-SE', { timeZone: TZ }).format(new Date()); }
+export function nowSecTPE() {
+  var p = new Intl.DateTimeFormat('sv-SE', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(new Date());
+  return p.replace(',', '').slice(0, 19);
+}
 export function nowTPE() {
   var p = new Intl.DateTimeFormat('sv-SE', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
   return p.replace(',', '').slice(0, 16);

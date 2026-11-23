@@ -1,7 +1,7 @@
 /* 資料層：把 Firestore 的資料整理成和試算表版相同的「列」格式，計算邏輯就能原封不動沿用 */
 import { normDateStr } from './logic.js';
 
-export const COL = { CLASS: 'classes', PAY_RULE: 'classPay', ROSTER: 'roster', ATT: 'attendance', PAY: 'payments', SET: 'settings', USER: 'users' };
+export const COL = { CLASS: 'classes', PAY_RULE: 'classPay', ROSTER: 'roster', ATT: 'attendance', PAY: 'payments', SET: 'settings', USER: 'users', LOG: 'logs' };
 export const DEFAULT_SETTINGS = { '分校': ['光武', '科園'], '補課期限天數': 14, '缺課追蹤起始日': '', '續費提醒堂數': 6, '預設續費堂數': 12, '網頁標題': '團班點名', '補課統計至': {} };
 
 /** Firestore 文件 id 不能有「/」 */
@@ -111,11 +111,16 @@ export function createStore(B, me) {
       const data = {}; keep.forEach(k => { data[k] = rec[k] == null ? '' : rec[k]; });
       await B.db.set(COL.ROSTER, idOf(rec['班級'], rec['分校'], rec['學生姓名']), data);
     },
+    async putRosterMany(recs) {
+      await B.db.batch(recs.map(r => ({ op: 'set', col: COL.ROSTER, id: idOf(r['班級'], r['分校'], r['學生姓名']), data: r })));
+    },
     async addPayment(rec) { const id = B.db.newId(COL.PAY); await B.db.set(COL.PAY, id, rec); return id; },
     async addPayments(recs) { await B.db.batch(recs.map(r => ({ op: 'set', col: COL.PAY, id: B.db.newId(COL.PAY), data: r }))); },
     async delPayment(id) { await B.db.del(COL.PAY, id); },
     async saveSettings(patch) { await B.db.set(COL.SET, 'main', patch, true); },
-    async setUser(uid, data) { await B.db.set(COL.USER, uid, data, true); }
+    async setUser(uid, data) { await B.db.set(COL.USER, uid, data, true); },
+    /** 操作紀錄：失敗不影響原本的動作 */
+    async log(rec) { try { await B.db.set(COL.LOG, B.db.newId(COL.LOG), rec); } catch (e) { console.warn('操作紀錄寫入失敗', e); } }
   };
 
   return { st, start, stop, read, conf, branches, cutoffs, classByName, W, me, onChange: cb => changeCbs.push(cb), DEL: B.DEL };
