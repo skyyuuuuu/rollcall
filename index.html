@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>團班點名</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#2563eb">
+<style>
+:root{--bg:#f4f6f9;--card:#fff;--ink:#1f2937;--mute:#6b7280;--line:#e5e7eb;--pri:#2563eb;--pri-soft:#dbeafe;
+--ok:#16a34a;--ok-soft:#dcfce7;--bad:#dc2626;--bad-soft:#fee2e2;--mk:#b45309;--mk-soft:#fef3c7;--tr:#0369a1;--tr-soft:#e0f2fe}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--ink);font-size:16px;-webkit-tap-highlight-color:transparent}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:center;gap:8px;padding:10px 14px}
+.top h1{font-size:17px;margin:0;flex:1}
+.who{font-size:13px;color:var(--mute)}
+nav{display:flex;overflow-x:auto;padding:0 8px;gap:2px;scrollbar-width:none}
+nav button{border:0;background:none;padding:10px 12px;font-size:15px;color:var(--mute);border-bottom:2px solid transparent;white-space:nowrap}
+nav button.on{color:var(--pri);border-bottom-color:var(--pri);font-weight:600}
+main{padding:12px 14px 110px;max-width:760px;margin:0 auto}
+.card{background:var(--card);border-radius:12px;padding:12px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+select,input{font-size:16px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);max-width:100%}
+select{flex:1;min-width:0}
+.btn{border:0;border-radius:8px;padding:10px 14px;font-size:15px;background:var(--pri);color:#fff;font-weight:600}
+.btn.ghost{background:var(--pri-soft);color:var(--pri)}
+.btn.sm{padding:6px 10px;font-size:14px}
+.btn:disabled{opacity:.45}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 12px;font-size:14px;white-space:nowrap;color:var(--ink)}
+.chip.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.chip .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-left:5px;vertical-align:middle}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center;margin-top:10px}
+.stats div{background:var(--bg);border-radius:8px;padding:6px 0}
+.stats b{display:block;font-size:20px}
+.stats span{font-size:12px;color:var(--mute)}
+.stu{display:flex;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid var(--line)}
+.stu:last-child{border-bottom:0}
+.stu .nm{flex:1;min-width:0}
+.stu .nm b{font-weight:600}
+.tag{font-size:11px;padding:1px 6px;border-radius:4px;margin-left:4px;vertical-align:1px;background:var(--bg);color:var(--mute)}
+.tag.tr{background:var(--tr-soft);color:var(--tr)}
+.tag.mk{background:var(--mk-soft);color:var(--mk)}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:#fff;padding:9px 14px;font-size:15px;color:var(--mute);min-width:52px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg .v.on{background:var(--ok);color:#fff;font-weight:600}
+.seg .x.on{background:var(--bad);color:#fff;font-weight:600}
+.stu.dirty{background:linear-gradient(90deg,var(--pri-soft) 4px,transparent 4px)}
+.savebar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center;z-index:6}
+.savebar .msg{flex:1;font-size:14px;color:var(--mute)}
+.muted{color:var(--mute);font-size:14px}
+.empty{text-align:center;color:var(--mute);padding:28px 0}
+.list-item{display:flex;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.list-item:last-child{border-bottom:0}
+.list-item .grow{flex:1;min-width:0}
+.od{color:var(--bad);font-weight:600}
+.tbl-wrap{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;font-size:13px;background:#fff}
+th,td{border:1px solid var(--line);padding:5px 6px;text-align:center;white-space:nowrap}
+th{background:#f1f5f9;position:sticky;top:0;z-index:1}
+td.nm,th.nm{position:sticky;left:0;background:#fff;text-align:left;z-index:2}
+th.nm{z-index:3;background:#f1f5f9}
+td.c-缺{background:var(--bad-soft);color:var(--bad)}
+td.c-△{background:var(--mk-soft)}
+td.c-☆{background:var(--tr-soft)}
+tr.sum td{background:#f8fafc;font-weight:600}
+.toast{position:fixed;left:50%;top:70px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:20;opacity:0;transition:.2s;pointer-events:none;max-width:90vw}
+.toast.on{opacity:.95}
+.login{max-width:340px;margin:12vh auto;text-align:center}
+.login input{width:100%;margin:8px 0;text-align:center;letter-spacing:4px;font-size:22px}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--pri);border-radius:50%;animation:s .7s linear infinite;vertical-align:middle}
+@keyframes s{to{transform:rotate(360deg)}}
+.hide{display:none!important}
+.card:empty{display:none}
+.dlg{position:fixed;inset:0;background:rgba(17,24,39,.45);z-index:30;display:flex;align-items:flex-end;justify-content:center}
+.dlg-box{background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.dlg-box h3{margin:0 0 6px;font-size:18px}
+.btn.ok{background:var(--ok)}
+.btn.bad{background:var(--bad)}
+.btn.out-bad{background:#fff;color:var(--bad);border:1px solid var(--bad)}
+.trial{padding:10px 0;border-bottom:1px solid var(--line)}
+.trial:last-child{border-bottom:0}
+.trial .acts{display:flex;gap:8px;margin-top:8px}
+.trial .acts .btn{flex:1}
+details summary{cursor:pointer;color:var(--pri);font-size:14px;padding:4px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{background:var(--bg);border-radius:10px;padding:10px}
+.kpi b{font-size:24px;display:block}
+label.ck{display:flex;gap:6px;align-items:center;padding:4px 0;font-size:15px}
+</style>
+</head>
+<body>
+<div id="toast" class="toast"></div>
+<div id="dlg" class="dlg hide" onclick="if(event.target===this)dlgClose(null)">
+  <div class="dlg-box">
+    <h3 id="dlgTitle"></h3>
+    <p id="dlgBody" class="muted" style="margin:0 0 12px"></p>
+    <div class="row" style="margin-bottom:14px"><span id="dlgDateLbl" class="muted"></span><input id="dlgDate" type="date" style="flex:1"></div>
+    <div class="row"><button class="btn ghost" style="flex:1" onclick="dlgClose(null)">取消</button><button class="btn" id="dlgOk" style="flex:2" onclick="dlgClose($('dlgDate').value)"></button></div>
+  </div>
+</div>
+
+<div id="loginView" class="login hide">
+  <h2 class="appTitle">團班點名</h2>
+  <div id="loginForm">
+    <input id="email" type="email" placeholder="Email" autocomplete="username" autocapitalize="none" spellcheck="false" style="letter-spacing:0;font-size:16px;text-align:left">
+    <input id="pw" type="password" placeholder="密碼" autocomplete="current-password" style="letter-spacing:0;font-size:16px;text-align:left" onkeydown="if(event.key==='Enter')login()">
+    <button class="btn" style="width:100%" onclick="login()">登入</button>
+    <p style="margin:10px 0 0"><a href="#" onclick="forgot();return false" class="muted">忘記密碼？</a></p>
+  </div>
+  <div id="demoBox" class="hide" style="margin-top:16px;text-align:left"></div>
+  <p id="loginErr" class="muted" style="color:var(--bad)"></p>
+</div>
+<div id="msgView" class="login hide"><h2 id="msgTitle"></h2><p id="msgBody" class="muted"></p><button id="msgOut" class="btn ghost hide" onclick="logout(true)">登出</button></div>
+
+<div id="app" class="hide">
+  <header>
+    <div class="top"><h1 class="appTitle">團班點名</h1><span class="who" id="whoLbl"></span><button class="btn sm ghost" onclick="changePw()">密碼</button><button class="btn sm ghost" onclick="logout()">登出</button></div>
+    <nav id="nav"></nav>
+  </header>
+  <main>
+    <!-- 點名 -->
+    <section id="t-roll">
+      <div class="card">
+        <div class="chips" id="clsChips"></div>
+        <div class="row" style="margin-top:10px">
+          <select id="sessSel" onchange="loadRoll(curCls,this.value)"></select>
+        </div>
+        <div class="row hide" id="sessOps" style="margin-top:8px"></div>
+        <div class="stats" id="rollStats"></div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:4px">
+          <span class="muted" id="rollHint"></span>
+          <button class="btn sm ghost" onclick="allPresent()">未點的全部「到」</button>
+        </div>
+        <div id="rollList"></div>
+        <details style="margin-top:8px"><summary>＋ 現場新增試聽生</summary>
+          <div class="row" style="margin-top:8px">
+            <input id="trialName" placeholder="姓名" style="flex:1;min-width:120px">
+            <select id="trialBranch" style="flex:0 0 auto"></select>
+            <button class="btn sm" onclick="addTrial()">加入</button>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- 補課 -->
+    <section id="t-mk" class="hide">
+      <div class="card">
+        <div class="chips" id="mkBranch"></div>
+        <p class="muted" style="margin:8px 0 0">學生看完補課影片後按「已補」，該堂會從「缺」變成「△」並計入講師薪資。</p>
+      </div>
+      <div class="card" id="mkList"></div>
+      <div class="card" id="mkRecent"></div>
+    </section>
+
+    <!-- 總表 -->
+    <section id="t-mx" class="hide">
+      <div class="card"><div class="chips" id="mxChips"></div>
+        <div class="row" style="margin-top:8px"><button class="btn sm ghost" id="mxDl" onclick="dlMatrix()" disabled>下載這班 Excel</button></div></div>
+      <div class="card"><div id="mxBox" class="muted">選一個班級</div></div>
+    </section>
+
+    <!-- 名單（行政） -->
+    <section id="t-ro" class="hide">
+      <div class="card" id="trialBox"></div>
+      <div class="card"><div class="chips" id="roChips"></div></div>
+      <div class="card" id="roList"></div>
+      <div class="card">
+        <b>新增學生</b>
+        <div class="row" style="margin-top:8px">
+          <input id="nsName" placeholder="姓名" style="flex:1;min-width:110px">
+          <select id="nsBranch" style="flex:0 0 auto"></select>
+          <select id="nsIdent" style="flex:0 0 auto"><option>正式</option><option>試聽</option></select>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <span class="muted">加入日</span><input id="nsDate" type="date">
+          <input id="nsContact" placeholder="家長聯絡（選填）" style="flex:1;min-width:140px">
+        </div>
+        <div id="nsClasses" style="margin-top:8px"></div>
+        <button class="btn" style="margin-top:8px" onclick="addStudent()">新增到勾選的班級</button>
+      </div>
+    </section>
+
+    <!-- 續費（行政） -->
+    <section id="t-rn" class="hide">
+      <div class="card"><span class="muted" id="rnHint"></span></div>
+      <div class="card" id="rnList"></div>
+      <div class="card" id="rnUnset"></div>
+      <div class="card" id="rnRecent"></div>
+    </section>
+
+    <!-- 月結（行政） -->
+    <section id="t-pay" class="hide">
+      <div class="card">
+        <div class="row">
+          <input id="payMonth" type="month" onchange="$('payCut').value=''">
+          <button class="btn" onclick="loadPay()">計算</button>
+          <button class="btn ghost" id="payDl" onclick="dlPay()" disabled>下載 Excel</button>
+        </div>
+        <div class="row hide" id="payCutRow" style="margin-top:8px">
+          <span class="muted">影片補課統計至</span><input id="payCut" type="date">
+          <button class="btn sm ghost" onclick="loadPay(true)">用這天重新計算</button>
+        </div>
+      </div>
+      <div class="card" id="payBox"><span class="muted">選月份後按計算</span></div>
+    </section>
+
+    <!-- 總覽（行政） -->
+    <section id="t-dash" class="hide">
+      <div class="card" id="dashBox"></div>
+      <div class="card">
+        <div class="row"><button class="btn ghost" onclick="dlAllMatrix()">下載全部班級點名總表</button>
+        <button class="btn ghost" id="dlBackupBtn" onclick="dlBackup()">下載全部資料備份</button></div>
+        <p class="muted">資料都存在 Firebase，網頁上的數字隨時是最新的；需要紙本或存檔時再下載 Excel。</p>
+      </div>
+    </section>
+    <!-- 管理（主管） -->
+    <section id="t-adm" class="hide">
+      <div class="card"><div class="chips" id="admTabs">
+        <button class="chip on" data-c="cls" onclick="admTab('cls')">班級</button>
+        <button class="chip" data-c="usr" onclick="admTab('usr')">帳號</button>
+        <button class="chip" data-c="set" onclick="admTab('set')">設定</button></div></div>
+      <div id="adm-cls">
+        <div class="card" id="clsList"></div>
+        <div class="card" id="clsForm"></div>
+      </div>
+      <div id="adm-usr" class="hide">
+        <div class="card" id="usrList"></div>
+        <div class="card" id="usrForm"></div>
+      </div>
+      <div id="adm-set" class="hide"><div class="card" id="setForm"></div></div>
+    </section>
+  </main>
+
+  <div class="savebar" id="saveBar">
+    <span class="msg" id="saveMsg">沒有未儲存的變更</span>
+    <button class="btn" id="saveBtn" onclick="saveRoll()" disabled>儲存點名</button>
+  </div>
+</div>
+
+<script>
+var S = { pin:'', who:'', role:'', boot:null, roll:null, edits:{}, mkBranch:'全部', pend:[] };
+var BK=null, DEMO=false;
+var curCls = '';
+
+function store(k,v){ try{ if(v===undefined) return localStorage.getItem(k); if(v===null) localStorage.removeItem(k); else localStorage.setItem(k,v);}catch(e){ return null; } }
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function toast(t){ var e=$('toast'); e.textContent=t; e.classList.add('on'); clearTimeout(e._t); e._t=setTimeout(function(){e.classList.remove('on');},2200); }
+/** 呼叫功能層（第二個參數是舊版的 PIN，已不使用） */
+function call(fn){
+  var args=[].slice.call(arguments,2);
+  return Promise.resolve().then(function(){ return window.API[fn].apply(null,args); })
+    .catch(function(e){ console.error(e); toast(e.message||String(e)); throw e; });
+}
+function md(d){ return d? d.slice(5).replace('-','/') : ''; }
+function wk(d){ var p=d.split('-'); return '日一二三四五六'.charAt(new Date(+p[0],+p[1]-1,+p[2]).getDay()); }
+
+// ── 登入（Firebase：Email＋密碼） ──
+function show(id){ ['loginView','msgView','app'].forEach(function(x){ $(x).classList.toggle('hide',x!==id); }); }
+function setTitle(t){ document.title=t; [].forEach.call(document.querySelectorAll('.appTitle'),function(e){ e.textContent=t; }); }
+window.UI={
+  setBackend:function(b,demo){ BK=b; DEMO=demo; },
+  showLogin:function(demo){
+    show('loginView'); $('loginErr').textContent='';
+    var e=store('roll_email'); if(e) $('email').value=e;
+    if(demo){ import('./js/demo.js').then(function(m){
+      $('demoBox').classList.remove('hide');
+      $('demoBox').innerHTML='<p class="muted" style="margin:0 0 6px">示範模式：資料只存在這個分頁，重新整理就會還原。點一下直接登入：</p>'+
+        m.DEMO_ACCOUNTS.map(function(a){ return '<button class="btn ghost" style="width:100%;margin:4px 0" onclick="demoLogin(\''+a.email+'\',\''+a.pw+'\')">'+a.label+'<span class="muted">　'+a.email+'</span></button>'; }).join('');
+    }); }
+  },
+  loading:function(msg){ show('msgView'); $('msgTitle').innerHTML='<span class="spin"></span>'; $('msgBody').textContent=msg; $('msgOut').classList.add('hide'); },
+  fatal:function(t,body,canOut){ show('msgView'); $('msgTitle').textContent=t; $('msgBody').innerHTML=body; $('msgOut').classList.toggle('hide',!canOut); },
+  boot:function(){
+    show('app'); var b=window.API.apiLogin(); S.role=b.role; S.boot=b; S.who=b.name; setTitle(b.title||'團班點名'); start();
+    if(S.role==='boss'&&!b.classes.length){ tab('adm'); toast('還沒有班級，先在「管理 → 班級」新增'); }
+    if(b.unknownClasses&&b.unknownClasses.length) setTimeout(function(){ toast('帳號裡有找不到的班級：'+b.unknownClasses.join('、')+'，請主管確認名稱'); },600);
+  }
+};
+function login(){
+  var em=$('email').value.trim(), pw=$('pw').value;
+  if(!em||!pw){ $('loginErr').textContent='請輸入 Email 和密碼'; return; }
+  $('loginErr').innerHTML='<span class="spin"></span>';
+  BK.auth.signIn(em,pw).then(function(){ store('roll_email',em); $('pw').value=''; }).catch(function(e){ $('loginErr').textContent=e.message; });
+}
+function demoLogin(em,pw){ $('email').value=em; $('pw').value=pw; login(); }
+function forgot(){
+  var em=$('email').value.trim()||prompt('請輸入你的 Email，系統會寄重設密碼的信'); if(!em) return;
+  BK.auth.reset(em).then(function(){ $('loginErr').textContent=''; alert('已寄出重設密碼的信到 '+em+'（沒收到請看垃圾郵件匣）'); }).catch(function(e){ $('loginErr').textContent=e.message; });
+}
+function logout(force){ if(!force && dirtyCount() && !confirm('有未儲存的點名，確定登出？')) return; S.edits={}; BK.auth.signOut().then(function(){ location.reload(); }); }
+function changePw(){
+  var o=prompt('目前的密碼'); if(!o) return;
+  var n=prompt('新密碼（至少 8 個字元，要有英文和數字）'); if(!n) return;
+  if(n.length<8||!/[a-zA-Z]/.test(n)||!/[0-9]/.test(n)) return toast('密碼至少 8 個字元，要同時有英文和數字');
+  if(n!==prompt('再輸入一次新密碼')) return toast('兩次輸入的新密碼不一樣');
+  BK.auth.changePassword(o,n).then(function(){ toast('密碼已更新'); }).catch(function(e){ toast(e.message); });
+}
+
+function isStaff(){ return S.role==='boss'||S.role==='branch'; }
+function start(){
+  $('loginView').classList.add('hide'); $('app').classList.remove('hide');
+  $('whoLbl').textContent=S.who+'（'+(S.boot.roleLabel||'')+(S.boot.branch?'・'+S.boot.branch:'')+'）';
+  var tabs=S.role==='assistant'? [['roll','點名']] : [['roll','點名'],['mk','補課'],['mx','總表']];
+  if(isStaff()) tabs=tabs.concat([['ro','名單'],['rn','續費'],['pay','月結'],['dash','總覽']]);
+  if(S.role==='boss') tabs.push(['adm','管理']);
+  $('nav').innerHTML=tabs.map(function(t){return '<button data-t="'+t[0]+'" onclick="tab(\''+t[0]+'\')">'+t[1]+'</button>';}).join('');
+  var br=S.boot.branches.map(function(b){return '<option>'+esc(b)+'</option>';}).join('');
+  $('trialBranch').innerHTML=br;
+  $('nsBranch').innerHTML= S.role==='branch'? '<option>'+esc(S.boot.branch)+'</option>' : br;
+  $('dlBackupBtn').classList.toggle('hide',S.role!=='boss');
+  $('nsDate').value=S.boot.today; $('payMonth').value=S.boot.today.slice(0,7);
+  var cls=S.boot.classes.slice().sort(function(a,b){return b.today-a.today;});
+  S.boot.classes=cls;
+  $('clsChips').innerHTML=chipHtml(cls,'pickCls');
+  $('mxChips').innerHTML=chipHtml(cls,'loadMx');
+  $('roChips').innerHTML=chipHtml(cls,'loadRo');
+  $('nsClasses').innerHTML=cls.map(function(c){return '<label class="ck"><input type="checkbox" value="'+esc(c.name)+'"> '+esc(c.name)+' <span class="muted">（'+esc(c.weekday)+' '+esc(c.time)+'）</span></label>';}).join('');
+  tab('roll');
+  var first=cls[0]; if(first) pickCls(first.name); else $('rollList').innerHTML='<div class="empty">你目前沒有可點名的班級，請洽行政</div>';
+}
+function chipHtml(cls,fn){
+  return cls.map(function(c){ return '<button class="chip" data-c="'+esc(c.name)+'" onclick="'+fn+'(this.dataset.c)">'+esc(c.name)+(c.today?'<span class="dot"></span>':'')+'</button>'; }).join('');
+}
+function markChip(box,name){ [].forEach.call($(box).children,function(b){ b.classList.toggle('on',b.dataset.c===name); }); }
+function tab(t){
+  if(t!=='roll' && dirtyCount() && !confirm('點名還沒儲存，確定離開？')) return;
+  [].forEach.call($('nav').children,function(b){ b.classList.toggle('on',b.dataset.t===t); });
+  ['roll','mk','mx','ro','rn','pay','dash','adm'].forEach(function(x){ var e=$('t-'+x); if(e) e.classList.toggle('hide',x!==t); });
+  $('saveBar').classList.toggle('hide',t!=='roll');
+  if(t==='mk') loadMk(); if(t==='dash') loadDash(); if(t==='rn') loadRn(); if(t==='ro') loadTrials(); if(t==='adm') admTab(S.admTab||'cls');
+}
+
+// ── 點名 ──
+function pickCls(name){
+  if(dirtyCount() && !confirm('目前班級點名還沒儲存，確定切換？')) return;
+  curCls=name; markChip('clsChips',name); loadRoll(name,'');
+}
+function loadRoll(cls,date){
+  if(date && dirtyCount() && !confirm('目前這堂還沒儲存，確定切換？')){ $('sessSel').value=S.roll.date; return; }
+  $('rollList').innerHTML='<div class="empty"><span class="spin"></span></div>';
+  call('apiSession',S.pin,cls,date||'').then(function(r){
+    S.roll=r; S.edits={};
+    $('sessSel').innerHTML=r.sessions.map(function(s){
+      var lbl=(s.status==='停課'?'停課':'第'+s.no+'堂')+'　'+md(s.date)+'（'+wk(s.date)+'）'+(/^調課/.test(s.note)?'　調課':'')+(s.done?'　✓已點':'')+(s.date===r.today?'　← 今天':'')+(s.date>r.today?'　未到':'');
+      return '<option value="'+s.date+'"'+(s.date===r.date?' selected':'')+(s.status==='停課'&&!isStaff()?' disabled':'')+'>'+lbl+'</option>';
+    }).join('');
+    renderRoll();
+  });
+}
+function cur(s){ var k=s.branch+'|'+s.name; return S.edits[k]!==undefined? S.edits[k] : s.status; }
+function dirtyCount(){ return Object.keys(S.edits).length; }
+function renderOps(){
+  var r=S.roll, box=$('sessOps');
+  if(!isStaff()||!r||!r.sessStatus){ box.classList.add('hide'); return; }
+  box.classList.remove('hide');
+  var note=(r.sessions.filter(function(s){return s.date===r.date;})[0]||{}).note||'';
+  box.innerHTML = r.sessStatus==='停課'
+    ? '<span class="muted" style="flex:1">這堂已停課'+(note?'（'+esc(note)+'）':'')+'</span><button class="btn sm ghost" onclick="sessOp(\'restore\')">恢復上課</button>'
+    : '<span class="muted" style="flex:1">'+(note?esc(note):'整堂異動：')+'</span><button class="btn sm ghost" onclick="sessOp(\'move\')">調課</button><button class="btn sm ghost" onclick="sessOp(\'cancel\')">停課順延</button>';
+}
+function sessOp(op){
+  var r=S.roll, p={cls:r.cls,date:r.date,from:r.date};
+  if(dirtyCount() && !confirm('這堂還有未儲存的點名，確定先做調整？')) return;
+  if(op==='move'){
+    var to=prompt(r.cls+'\n把 '+md(r.date)+'（'+wk(r.date)+'）這堂改到哪一天？（格式 2026-10-22）',r.date); if(to===null||to===r.date) return;
+    var why=prompt('調課原因（選填）',''); if(why===null) return;
+    p.to=to.trim().replace(/\//g,'-'); p.note=why;
+  } else if(op==='cancel'){
+    var why2=prompt(r.cls+' '+md(r.date)+' 停課，學期最後會自動順延一堂。\n停課原因（選填，例如：颱風）',''); if(why2===null) return;
+    p.note=why2;
+  } else if(!confirm('把 '+md(r.date)+' 恢復成上課？（若有順延出來、還沒上的最後一堂會一併拿掉）')) return;
+  call('apiSessionOp',S.pin,op,p).then(function(x){
+    S.edits={};
+    if(op==='move'){ toast('已調到 '+md(p.to)+(x.moved?'，'+x.moved+' 筆點名一起搬過去':'')); loadRoll(r.cls,p.to); }
+    else if(op==='cancel'){ toast('已停課'+(x.appended.length?'，順延到 '+x.appended.map(md).join('、'):'')); loadRoll(r.cls,r.date); }
+    else { toast('已恢復上課'+(x.removed?'，拿掉順延的 '+md(x.removed):'')); loadRoll(r.cls,r.date); }
+  });
+}
+function renderRoll(){
+  renderOps();
+  var r=S.roll, future=r.date>r.today||r.sessStatus==='停課';
+  var cnt={V:0,X:0,N:0};
+  $('rollList').innerHTML = r.students.length? r.students.map(function(s,i){
+    var st=cur(s), k=s.branch+'|'+s.name;
+    var isV=(st==='V'||st==='☆'), isX=(st==='缺');
+    if(isV) cnt.V++; else if(isX) cnt.X++; else if(st==='△') cnt.V+=0; else cnt.N++;
+    var tags='<span class="tag">'+esc(s.branch)+'</span>'+(s.trial?'<span class="tag tr">試聽</span>':'')+(st==='△'?'<span class="tag mk">△已補課</span>':'');
+    return '<div class="stu'+(S.edits[k]!==undefined?' dirty':'')+'"><div class="nm"><b>'+esc(s.name)+'</b>'+tags+'</div>'+
+      '<div class="seg"><button class="v'+(isV?' on':'')+'" onclick="setSt('+i+',\'V\')"'+(future?' disabled':'')+'>到</button>'+
+      '<button class="x'+(isX?' on':'')+'" onclick="setSt('+i+',\'缺\')"'+(future?' disabled':'')+'>缺</button></div></div>';
+  }).join('') : '<div class="empty">這堂沒有在班學生</div>';
+  var mk=r.students.filter(function(s){return cur(s)==='△';}).length;
+  $('rollStats').innerHTML='<div><b>'+r.expected+'</b><span>應到(正式)</span></div><div><b style="color:var(--ok)">'+cnt.V+'</b><span>到'+(mk?'（另△'+mk+'）':'')+'</span></div><div><b style="color:var(--bad)">'+cnt.X+'</b><span>缺</span></div><div><b>'+cnt.N+'</b><span>未點</span></div>';
+  $('rollHint').textContent = r.sessStatus==='停課'? '這堂停課，不用點名' : future? '這堂還沒到，不能點名' : '點錯了？再按一次同一顆就會取消';
+  var d=dirtyCount();
+  $('saveMsg').textContent = d? ('有 '+d+' 筆未儲存') : (cnt.N? ('還有 '+cnt.N+' 位未點') : '已全部點完 ✓');
+  $('saveBtn').disabled = !d || future;
+}
+function setSt(i,st){
+  var s=S.roll.students[i], k=s.branch+'|'+s.name;
+  var now=cur(s); if(now==='☆') now='V';
+  var target=(st===now)?'':st;            // 再按一次同一顆 = 誤點取消（回到未點）
+  var base=s.status==='☆'?'V':s.status;
+  if(target===base || (target==='' && s.status==='△') || (target==='缺' && s.status==='△')) delete S.edits[k];
+  else S.edits[k]=target;
+  renderRoll();
+}
+function allPresent(){
+  if(S.roll.date>S.roll.today||S.roll.sessStatus==='停課') return;
+  S.roll.students.forEach(function(s,i){ if(!cur(s)) S.edits[s.branch+'|'+s.name]='V'; });
+  renderRoll();
+}
+function saveRoll(){
+  var r=S.roll, entries=Object.keys(S.edits).map(function(k){ var p=k.split('|'); return {branch:p[0],name:p.slice(1).join('|'),status:S.edits[k]}; });
+  var left=r.students.filter(function(s){return !cur(s);}).length;
+  if(left && !confirm('還有 '+left+' 位未點，先儲存已點的？')) return;
+  $('saveBtn').disabled=true; $('saveMsg').innerHTML='<span class="spin"></span> 儲存中…';
+  call('apiSave',S.pin,r.cls,r.date,entries,S.who).then(function(x){
+    toast('已儲存（新增 '+x.added+'、修改 '+x.updated+(x.removed?'、取消 '+x.removed:'')+'）'); S.edits={}; loadRoll(r.cls,r.date);
+  }).catch(function(){ renderRoll(); });
+}
+function addTrial(){
+  var n=$('trialName').value.trim(); if(!n) return toast('請輸入姓名');
+  call('apiAddTrial',S.pin,S.roll.cls,$('trialBranch').value,n,S.roll.date).then(function(){
+    $('trialName').value=''; toast('已加入試聽生 '+n); var keep=S.edits; var d=S.roll.date;
+    call('apiSession',S.pin,S.roll.cls,d).then(function(r){ S.roll=r; S.edits=keep; renderRoll(); });
+  });
+}
+
+// ── 補課 ──
+function loadMk(){
+  $('mkList').innerHTML='<div class="empty"><span class="spin"></span></div>';
+  call('apiPending',S.pin).then(function(list){ S.pend=list; renderMk(); });
+  call('apiRecentMakeups',S.pin).then(function(list){
+    S.mkRecent=list;
+    $('mkRecent').innerHTML='<b>最近 14 天已登記補課</b><p class="muted" style="margin:4px 0">按錯了可以在這裡取消，該堂會改回「缺」。</p>'+(list.length? list.map(function(a,i){
+      return '<div class="list-item"><div class="grow">'+esc(a.name)+'<span class="tag">'+esc(a.branch)+'</span><span class="tag mk">△</span><div class="muted">'+esc(a.cls)+'　缺 '+md(a.date)+'　補 '+md(a.on)+(a.by?'　'+esc(a.by):'')+'</div></div><button class="btn sm ghost" onclick="undoMk('+i+')">取消</button></div>';
+    }).join('') : '<div class="muted">沒有</div>');
+  });
+}
+function renderMk(){
+  var bs=S.role==='branch'? [] : ['全部'].concat(S.boot.branches);
+  $('mkBranch').innerHTML=bs.map(function(b){return '<button class="chip'+(S.mkBranch===b?' on':'')+'" onclick="S.mkBranch=\''+b+'\';renderMk()">'+esc(b)+'</button>';}).join('');
+  var L=S.pend.filter(function(p){return S.mkBranch==='全部'||p.branch===S.mkBranch;});
+  $('mkList').innerHTML = L.length? L.map(function(p,i){
+    return '<div class="list-item"><div class="grow"><b>'+esc(p.name)+'</b><span class="tag">'+esc(p.branch)+'</span><div class="muted">'+esc(p.cls)+'　'+md(p.date)+'（'+wk(p.date)+'）　<span class="'+(p.overdue?'od':'')+'">'+p.days+' 天</span></div></div>'+
+      '<button class="btn sm" onclick="doMk('+S.pend.indexOf(p)+')">已補</button></div>';
+  }).join('') : '<div class="empty">沒有待補課的缺課 🎉</div>';
+}
+function undoMk(i){
+  var a=S.mkRecent[i];
+  if(!confirm('取消 '+a.name+'（'+a.cls+' '+md(a.date)+'）的補課登記？')) return;
+  call('apiUnmakeup',S.pin,a.cls,a.date,a.branch,a.name).then(function(){ toast('已取消，改回「缺」'); loadMk(); });
+}
+function doMk(i){
+  var p=S.pend[i];
+  var d=prompt(p.name+'｜'+p.cls+' '+md(p.date)+'\n補課（看影片）日期：',S.boot.today); if(d===null) return;
+  call('apiMakeup',S.pin,p.cls,p.date,p.branch,p.name,d,S.who).then(function(){ toast('已登記 '+p.name+' 補課（按錯可在下方取消）'); loadMk(); });
+}
+
+// ── 總表 ──
+function loadMx(name){
+  S.mxCls=name; $('mxDl').disabled=false;
+  markChip('mxChips',name); $('mxBox').innerHTML='<div class="empty"><span class="spin"></span></div>';
+  call('apiMatrix',S.pin,name).then(function(m){
+    var cols=m.sess;
+    var h='<div class="tbl-wrap"><table><thead><tr><th class="nm">學生＼堂次</th>'+cols.map(function(c){return '<th>'+(c.status==='停課'?'停':c.no)+'<br><span class="muted">'+md(c.date)+'</span></th>';}).join('')+'</tr></thead><tbody>';
+    h+='<tr class="sum"><td class="nm">應到</td>'+cols.map(function(c){return '<td>'+(c.status==='停課'?'':c.expected)+'</td>';}).join('')+'</tr>';
+    m.rows.forEach(function(r){
+      h+='<tr><td class="nm">'+esc(r.name)+' <span class="tag">'+esc(r.branch)+'</span>'+(r.ident==='試聽'?'<span class="tag tr">試聽</span>':'')+(r.quit?'<span class="tag">退'+md(r.quit)+'</span>':'')+'</td>'+
+        r.marks.map(function(v){return '<td class="c-'+v+'">'+esc(v)+'</td>';}).join('')+'</tr>';
+    });
+    h+='<tr class="sum"><td class="nm">計薪人數</td>'+cols.map(function(c){return '<td>'+(c.n==null?'':c.n)+'</td>';}).join('')+'</tr>';
+    m.branches.forEach(function(b){ h+='<tr class="sum"><td class="nm">　'+esc(b)+'人數</td>'+cols.map(function(c){return '<td>'+(c.byBranch?c.byBranch[b]:'')+'</td>';}).join('')+'</tr>'; });
+    if(m.showTotal) h+='<tr class="sum"><td class="nm">講師薪資</td>'+cols.map(function(c){return '<td>'+(c.total==null?'':c.total)+'</td>';}).join('')+'</tr>';
+    if(m.payBranches&&m.payBranches.length){
+      m.payBranches.forEach(function(b){ h+='<tr class="sum"><td class="nm">'+esc(b)+'負擔</td>'+cols.map(function(c){return '<td>'+(c.split?c.split[b]:'')+'</td>';}).join('')+'</tr>'; });
+    }
+    $('mxBox').innerHTML=h+'</tbody></table></div><p class="muted">V 到課｜△ 影片補課｜☆ 試聽｜缺 缺課未補</p>';
+  });
+}
+
+// ── 名單 ──
+var roCls='';
+function loadRo(name){
+  roCls=name; markChip('roChips',name); $('roList').innerHTML='<div class="empty"><span class="spin"></span></div>';
+  call('apiRoster',S.pin,name).then(function(L){
+    S.ro=L;
+    $('roList').innerHTML='<div class="muted" style="margin-bottom:4px">'+esc(name)+'：在班 '+L.filter(function(x){return x.active;}).length+' 人</div>'+L.map(function(s,i){
+      var tags='<span class="tag">'+esc(s.branch)+'</span>'+(s.ident==='試聽'?'<span class="tag tr">試聽</span>':'')+(s.quit?'<span class="tag">已退 '+md(s.quit)+'</span>':'')+
+        (s.remain!=null&&!s.quit?'<span class="tag'+(s.remain<=0?' mk':'')+'">剩 '+s.remain+' 堂</span>':'');
+      var sub='加入 '+(md(s.join)||'—')+(s.formal&&s.formal!==s.join?'｜轉正 '+md(s.formal):'')+(s.note?'｜'+esc(s.note):'');
+      var acts=(s.ident==='試聽'&&!s.quit?'<button class="btn sm ok" onclick="roAct(\'formal\','+i+')">✓ 轉正</button> <button class="btn sm out-bad" onclick="roAct(\'notcontinue\','+i+')">✕ 不續班</button>':'')+
+        (s.ident==='正式'&&s.formal&&s.formal!==s.join&&!s.quit?'<button class="btn sm ghost" onclick="roAct(\'undoformal\','+i+')">取消轉正</button> ':'')+
+        (s.quit?'<button class="btn sm ghost" onclick="roAct(\'undoquit\','+i+')">取消退班</button>':(s.ident==='試聽'?'':'<button class="btn sm ghost" onclick="roAct(\'quit\','+i+')">退班</button>'));
+      return '<div class="list-item"'+(s.active?'':' style="opacity:.55"')+'><div class="grow"><b>'+esc(s.name)+'</b>'+tags+'<div class="muted">'+sub+'</div></div>'+acts+'</div>';
+    }).join('');
+  });
+}
+// ── 對話框（日期＋確認） ──
+var _dlgCb=null;
+function ask(o){ return new Promise(function(ok){
+  $('dlgTitle').textContent=o.title; $('dlgBody').innerHTML=o.body||''; $('dlgDateLbl').textContent=o.dateLabel||'日期';
+  $('dlgDate').value=o.date||S.boot.today; var b=$('dlgOk'); b.textContent=o.ok; b.className='btn '+(o.cls||'');
+  _dlgCb=ok; $('dlg').classList.remove('hide');
+}); }
+function dlgClose(v){ $('dlg').classList.add('hide'); if(_dlgCb){ var f=_dlgCb; _dlgCb=null; f(v); } }
+
+// ── 試聽追蹤（主管、分校行政） ──
+function loadTrials(){
+  $('trialBox').innerHTML='<b>試聽生待確認</b><div class="empty"><span class="spin"></span></div>';
+  call('apiTrials',S.pin).then(function(r){
+    S.trials=r;
+    var h='<b>試聽生待確認（'+r.pending.length+'）</b><p class="muted" style="margin:4px 0">決定好之後按「轉正」或「不續班」，系統會自動更新名單、應到人數和續費堂數。</p>';
+    h+= r.pending.length? r.pending.map(function(t,i){
+      var tried=t.dates.length? '試聽 '+t.dates.map(md).join('、')+'（'+t.dates.length+' 次）' : '還沒來試聽';
+      return '<div class="trial"><div><b>'+esc(t.name)+'</b><span class="tag">'+esc(t.branch)+'</span><span class="tag tr">試聽</span></div>'+
+        '<div class="muted">'+esc(t.cls)+'　'+tried+(t.contact?'　'+esc(t.contact):'')+'</div>'+
+        '<div class="acts"><button class="btn ok" onclick="trialDo('+i+',\'formal\')">✓ 轉正</button><button class="btn out-bad" onclick="trialDo('+i+',\'notcontinue\')">✕ 不續班</button></div></div>';
+    }).join('') : '<div class="empty" style="padding:12px 0">目前沒有待確認的試聽生</div>';
+    if(r.done.length){
+      h+='<details style="margin-top:8px"><summary>最近 14 天已處理（'+r.done.length+'）— 按錯可復原</summary>'+r.done.map(function(t,i){
+        return '<div class="list-item"><div class="grow">'+esc(t.name)+'<span class="tag">'+esc(t.branch)+'</span><span class="tag '+(t.result==='轉正'?'tr':'mk')+'">'+t.result+' '+md(t.on)+'</span><div class="muted">'+esc(t.cls)+'</div></div><button class="btn sm ghost" onclick="trialUndo('+i+')">復原</button></div>';
+      }).join('')+'</details>';
+    }
+    $('trialBox').innerHTML=h;
+  });
+}
+function trialDo(i,act){ trialDecide(S.trials.pending[i],act); }
+function trialDecide(t,act){
+  var last=t.dates.length? t.dates[t.dates.length-1] : '';
+  var o= act==='formal'
+    ? {title:'✓ '+t.name+' 轉正', body:esc(t.cls)+'<br>從這天起列入應到人數，也開始扣續費堂數。', dateLabel:'正式上課日', ok:'確定轉正', cls:'ok'}
+    : {title:'✕ '+t.name+' 不續班', body:esc(t.cls)+(last?'<br>最後一次試聽 '+md(last):'')+'<br>從這天起不再出現在點名單。', dateLabel:'不續班日期', ok:'確定不續班', cls:'bad'};
+  ask(o).then(function(d){
+    if(!d) return;
+    call('apiRosterAction',S.pin,act,{cls:t.cls,branch:t.branch,name:t.name,date:d}).then(function(){
+      toast(t.name+(act==='formal'?' 已轉正':' 已標記不續班')); loadTrials(); if(roCls===t.cls) loadRo(roCls);
+    });
+  });
+}
+function trialUndo(i){
+  var t=S.trials.done[i];
+  if(!confirm('復原 '+t.name+' 的「'+t.result+'」？')) return;
+  call('apiRosterAction',S.pin,t.result==='轉正'?'undoformal':'undoquit',{cls:t.cls,branch:t.branch,name:t.name}).then(function(){
+    toast('已復原，'+t.name+' 回到試聽生'); loadTrials(); if(roCls===t.cls) loadRo(roCls);
+  });
+}
+
+function roAct(act,i){
+  var s=S.ro[i], d=S.boot.today;
+  if(act==='formal'||act==='notcontinue'){ // 跟試聽追蹤用同一個對話框
+    trialDecide({cls:roCls,branch:s.branch,name:s.name,dates:[]},act); return;
+  }
+  if(act==='undoformal'){ if(!confirm('把 '+s.name+' 改回試聽生？')) return; }
+  else if(act!=='undoquit'){ d=prompt((act==='formal'?'轉正日期':'退班日期（這天起不再列入點名）')+'：',S.boot.today); if(d===null) return; }
+  call('apiRosterAction',S.pin,act,{cls:roCls,branch:s.branch,name:s.name,date:d}).then(function(){ toast('已更新'); loadRo(roCls); });
+}
+function addStudent(){
+  var classes=[].map.call(document.querySelectorAll('#nsClasses input:checked'),function(x){return x.value;});
+  var p={name:$('nsName').value,branch:$('nsBranch').value,ident:$('nsIdent').value,date:$('nsDate').value,contact:$('nsContact').value,classes:classes};
+  call('apiRosterAction',S.pin,'add',p).then(function(x){
+    toast('已加入 '+x.added.length+' 班'+(x.skipped.length?'（'+x.skipped.length+' 班原本就有）':''));
+    $('nsName').value=''; $('nsContact').value=''; [].forEach.call(document.querySelectorAll('#nsClasses input'),function(x){x.checked=false;});
+    if(roCls) loadRo(roCls);
+  });
+}
+
+// ── 續費 ──
+function loadRn(){
+  $('rnList').innerHTML='<div class="empty"><span class="spin"></span></div>'; $('rnUnset').innerHTML='';
+  call('apiRenewals',S.pin).then(function(r){
+    S.rn=r;
+    $('rnHint').innerHTML='剩餘 ≤ <b>'+r.threshold+'</b> 堂的正式生會列在這裡。缺課照扣、試聽不扣。<br>流程：開好學費單按「已開單」→ 家長繳費後按「已續費」補上堂數。';
+    var gd={}; r.due.forEach(function(b){ (gd[b.cls]=gd[b.cls]||[]).push(b); });
+    var batch=Object.keys(gd).filter(function(c){return gd[c].length>1;}).map(function(c){
+      return '<div class="row" style="justify-content:space-between;padding:6px 0"><span>'+esc(c)+' <span class="muted">'+gd[c].length+' 人</span></span><span><button class="btn sm ghost" data-c="'+esc(c)+'" onclick="rnBatch(this.dataset.c,\'billed\')">整班已開單</button> <button class="btn sm" data-c="'+esc(c)+'" onclick="rnBatch(this.dataset.c,\'pay\')">整班已續費</button></span></div>';
+    }).join('');
+    $('rnList').innerHTML='<b>待續費（'+r.due.length+'）</b>'+(batch?'<div style="border-bottom:1px solid var(--line);margin-bottom:4px">'+batch+'</div>':'')+(r.due.length? r.due.map(function(b,i){
+      var st=b.remain<0?'<span class="tag mk">已超上 '+(-b.remain)+' 堂</span>':b.billedOn?'<span class="tag tr">已開單 '+md(b.billedOn)+'</span>':'<span class="tag mk">待開單</span>';
+      return '<div class="list-item"><div class="grow"><b>'+esc(b.name)+'</b><span class="tag">'+esc(b.branch)+'</span>'+st+
+        '<div class="muted">'+esc(b.cls)+'</div><div class="muted">已繳 '+b.paid+'｜已上 '+b.used+'｜<b style="color:'+(b.remain<=0?'var(--bad)':'var(--ink)')+'">剩 '+b.remain+' 堂</b>'+(b.lastDate?'｜'+md(b.lastDate)+' 用完':'')+'</div></div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px"><button class="btn sm" onclick="rnPay('+i+')">已續費</button>'+
+        '<button class="btn sm ghost" onclick="rnBill('+i+')">'+(b.billedOn?'取消開單':'已開單')+'</button></div></div>';
+    }).join('') : '<div class="empty">目前沒有需要續費的學生</div>');
+    $('rnRecent').innerHTML='<b>最近 30 天繳費／期初紀錄</b><p class="muted" style="margin:4px 0">按錯了可以在這裡取消，那筆堂數會被扣回。</p>'+(r.recent.length? r.recent.map(function(x,i){
+      return '<div class="list-item"><div class="grow">'+esc(x.name)+'<span class="tag">'+esc(x.branch)+'</span><span class="tag tr">＋'+x.count+' 堂</span><div class="muted">'+esc(x.cls)+'　'+md(x.on)+(x.amount?'　$'+Number(x.amount).toLocaleString():'')+(x.by?'　'+esc(x.by):'')+(x.note?'　'+esc(x.note):'')+'</div></div><button class="btn sm ghost" onclick="rnUndo('+i+')">取消</button></div>';
+    }).join('') : '<div class="muted">沒有</div>');
+    var g={}; r.unset.forEach(function(b){ (g[b.cls]=g[b.cls]||[]).push(b); });
+    var cls=Object.keys(g);
+    $('rnUnset').innerHTML='<b>尚未設定已繳堂數（'+r.unset.length+'）</b><p class="muted" style="margin:4px 0">第一次使用時要先設定每位學生目前的堂數，之後就會自動扣。整班一起繳費的，用「整班設定」最快。</p>'+
+      cls.map(function(c){ return '<div style="margin-top:10px"><div class="row" style="justify-content:space-between"><b>'+esc(c)+'</b><button class="btn sm" data-c="'+esc(c)+'" onclick="rnClassOpen(this.dataset.c)">整班設定：已繳到第 N 堂</button></div>'+
+        g[c].map(function(b){ return '<div class="list-item"><div class="grow">'+esc(b.name)+'<span class="tag">'+esc(b.branch)+'</span><span class="muted">　已上 '+b.used+' 堂</span></div><button class="btn sm ghost" onclick="rnOpen('+r.unset.indexOf(b)+')">設定剩餘</button></div>'; }).join('')+'</div>'; }).join('');
+  });
+}
+function rnUndo(i){
+  var x=S.rn.recent[i];
+  if(!confirm('取消這筆紀錄？\n'+x.name+'｜'+x.cls+'｜＋'+x.count+' 堂（'+md(x.on)+'）')) return;
+  call('apiRenewAction',S.pin,'undoPay',{row:x.row,cls:x.cls,branch:x.branch,name:x.name,count:x.count}).then(function(){ toast('已取消'); loadRn(); });
+}
+function rnPay(i){
+  var b=S.rn.due[i];
+  var n=prompt(b.name+'｜'+b.cls+'\n續費幾堂？',S.rn.def); if(n===null) return;
+  var amt=prompt('金額（選填，可留空）',''); if(amt===null) return;
+  call('apiRenewAction',S.pin,'pay',{cls:b.cls,branch:b.branch,name:b.name,count:n,amount:amt}).then(function(){ toast('已登記 '+b.name+' 續費 '+n+' 堂'); loadRn(); });
+}
+function rnBatch(c,act){
+  var L=S.rn.due.filter(function(b){return b.cls===c && (act==='pay' || !b.billedOn);});
+  if(!L.length) return toast('這班都已標記開單');
+  var items=L.map(function(b){return {cls:b.cls,branch:b.branch,name:b.name};});
+  if(act==='billed'){ if(!confirm(c+'：'+L.length+' 位標記為「已開單」？')) return;
+    return call('apiRenewAction',S.pin,'billed',{items:items,on:true}).then(function(n){ toast('已標記 '+n+' 位'); loadRn(); }); }
+  var n=prompt(c+'：列表中 '+L.length+' 位都已繳費？\n每人續費幾堂？',S.rn.def); if(n===null) return;
+  call('apiRenewAction',S.pin,'pay',{items:items,count:n}).then(function(k){ toast('已登記 '+k+' 位續費 '+n+' 堂'); loadRn(); });
+}
+function rnBill(i){
+  var b=S.rn.due[i];
+  call('apiRenewAction',S.pin,'billed',{cls:b.cls,branch:b.branch,name:b.name,on:!b.billedOn}).then(function(){ toast(b.billedOn?'已取消開單標記':'已標記開單'); loadRn(); });
+}
+function rnOpen(i){
+  var b=S.rn.unset[i];
+  var n=prompt(b.name+'｜'+b.cls+'\n已上 '+b.used+' 堂。目前「還剩」幾堂已繳費的課？',''); if(n===null||n==='') return;
+  call('apiRenewAction',S.pin,'opening',{cls:b.cls,branch:b.branch,name:b.name,remain:n}).then(function(){ toast('已設定'); loadRn(); });
+}
+function rnClassOpen(c){
+  var n=prompt(c+'\n尚未設定的學生都「已繳到第幾堂」？（例如一期繳到第 24 堂就填 24）',''); if(n===null||n==='') return;
+  call('apiRenewAction',S.pin,'classOpening',{cls:c,uptoNo:n}).then(function(k){ toast('已設定 '+k+' 位'); loadRn(); });
+}
+
+// ── 月結 ──
+function loadPay(useCut){
+  var m=$('payMonth').value; if(!m) return;
+  var cut=useCut? $('payCut').value : '';
+  $('payBox').innerHTML='<div class="empty"><span class="spin"></span></div>';
+  call('apiMonthly',S.pin,m,cut).then(function(r){
+    S.payRes=r; S.payMonth=m; $('payDl').disabled=!r.rows.length;
+    $('payCutRow').classList.toggle('hide',!r.canSetCutoff); $('payCut').value=r.cutoff;
+    if(!r.rows.length){ $('payBox').innerHTML='<div class="empty">'+m+' 沒有已點名的堂次</div>'; return; }
+    var B=r.branches, T=r.showTotal, fmt=function(n){return n==null?'':Number(Math.round(n)).toLocaleString();};
+    var AB=r.allBranches||B, g=r.grand, nb=function(o,b){ return (o&&o[b])||0; };
+    var h='<p class="muted" style="margin-top:0">影片補課統計至 <b>'+md(r.cutoff)+'</b>'+(T?'':'；金額只顯示'+esc(B[0])+'要負擔的部分')+'。</p>';
+    // 分校人數統計
+    h+='<b>分校人數統計</b><div class="tbl-wrap" style="margin:6px 0 12px"><table><thead><tr><th class="nm">分校</th><th>計薪人數</th><th>其中前月補課</th><th>占比</th>'+(B.length?'<th>薪資負擔</th>':'')+'</tr></thead><tbody>'+
+      AB.map(function(b){ var v=nb(g.nb,b); return '<tr><td class="nm">'+esc(b)+'</td><td>'+v+'</td><td>'+(nb(g.prevB,b)||'')+'</td><td>'+(g.n?Math.round(v/g.n*1000)/10+'%':'')+'</td>'+(B.length?'<td>'+(B.indexOf(b)>=0?fmt(g.split[b]):'—')+'</td>':'')+'</tr>'; }).join('')+
+      '<tr class="sum"><td class="nm">合計</td><td>'+g.n+'</td><td>'+(g.prev||'')+'</td><td></td>'+(B.length?'<td>'+(T?fmt(g.total):'')+'</td>':'')+'</tr></tbody></table></div>';
+    h+='<b>各班</b><div class="tbl-wrap" style="margin-top:6px"><table><thead><tr><th class="nm">班級</th><th>堂數</th><th>總人數</th>'+AB.map(function(b){return '<th>'+esc(b)+'人數</th>';}).join('')+'<th>前月補課</th>'+(T?'<th>講師薪資</th>':'')+B.map(function(b){return '<th>'+esc(b)+'負擔</th>';}).join('')+'</tr></thead><tbody>';
+    r.rows.forEach(function(x){ h+='<tr><td class="nm">'+esc(x.cls)+(x.teacher?'<div class="muted">'+esc(x.teacher)+'</div>':'')+'</td><td>'+x.sessions+'</td><td>'+x.n+'</td>'+AB.map(function(b){return '<td>'+nb(x.nb,b)+'</td>';}).join('')+'<td>'+(x.prev||'')+'</td>'+(T?'<td>'+fmt(x.total)+'</td>':'')+B.map(function(b){return '<td>'+fmt(x.split[b])+'</td>';}).join('')+'</tr>'; });
+    h+='<tr class="sum"><td class="nm">合計</td><td>'+g.sessions+'</td><td>'+g.n+'</td>'+AB.map(function(b){return '<td>'+nb(g.nb,b)+'</td>';}).join('')+'<td>'+(g.prev||'')+'</td>'+(T?'<td>'+fmt(g.total)+'</td>':'')+B.map(function(b){return '<td>'+fmt(g.split[b])+'</td>';}).join('')+'</tr></tbody></table></div>';
+    // 各班明細（比照講師計算人數表）
+    r.rows.forEach(function(x){
+      var prevNames=x.prevList.map(function(p){ return esc(p.name)+md(p.absent); }).join('、');
+      h+='<details style="margin-top:10px"><summary>'+esc(x.cls)+(x.teacher?'（'+esc(x.teacher)+'）':'')+'　總人數 '+x.n+(T?'　薪資 '+fmt(x.total):'')+'</summary>'+
+        '<div class="tbl-wrap" style="margin-top:6px"><table><thead><tr><th class="nm">日期</th><th>應到</th><th>實到</th><th>影片補課</th>'+AB.map(function(b){return '<th>'+esc(b)+'</th>';}).join('')+'<th style="text-align:left">備註</th></tr></thead><tbody>'+
+        '<tr><td class="nm">前月補課</td><td></td><td></td><td>'+(x.prev||'')+'</td>'+AB.map(function(b){return '<td>'+(nb(x.prevB,b)||'')+'</td>';}).join('')+'<td style="text-align:left;white-space:normal">'+prevNames+(x.prev&&!x.perHead?'<span class="muted">（非按人頭，不加回）</span>':'')+'</td></tr>'+
+        x.detail.map(function(d){ return '<tr><td class="nm">'+md(d.date)+'</td><td>'+d.expected+'</td><td>'+d.present+'</td><td>'+(d.same||'')+'</td>'+AB.map(function(b){return '<td>'+nb(d.byBranch,b)+'</td>';}).join('')+'<td style="text-align:left;white-space:normal">'+esc(d.notes)+'</td></tr>'; }).join('')+
+        '<tr class="sum"><td class="nm">總人數</td><td></td><td>'+x.present+'</td><td>'+(x.same+x.prev)+'</td>'+AB.map(function(b){return '<td>'+nb(x.nb,b)+'</td>';}).join('')+'<td style="text-align:left">'+x.n+'　<span class="muted">'+esc(x.rule)+'</span></td></tr>'+
+        '</tbody></table></div>'+
+        (x.unfinished.length?'<p class="muted" style="margin:6px 0 0">尚未完成補課：'+x.unfinished.map(function(u){return md(u.date)+' '+u.names.map(esc).join('、');}).join('；')+'</p>':'')+
+        '</details>';
+    });
+    h+='<p class="muted">本月截止前補完的影片補課直接算進那一堂；以前月份缺課、本月才補完的列在「前月補課」，按人頭計薪的班加回每人金額（由該生分校負擔），固定／級距制只列出不加回。</p>';
+    $('payBox').innerHTML=h;
+  });
+}
+
+// ── 總覽 ──
+function loadDash(){
+  $('dashBox').innerHTML='<div class="empty"><span class="spin"></span></div>';
+  call('apiDashboard',S.pin).then(function(d){
+    var h='<div class="grid2"><div class="kpi"><span class="muted">未點名堂次</span><b style="color:'+(d.missing.length?'var(--bad)':'var(--ok)')+'">'+d.missing.length+'</b></div>'+
+      '<div class="kpi"><span class="muted">缺課未補（逾期）</span><b>'+d.pending+' <span class="od" style="font-size:16px">('+d.overdue+')</span></b></div>'+
+      '<div class="kpi" style="cursor:pointer" onclick="tab(\'ro\')"><span class="muted">試聽待確認</span><b style="color:'+(d.trials?'var(--tr)':'var(--ok)')+'">'+d.trials+'</b></div>'+
+      '<div class="kpi" style="cursor:pointer" onclick="tab(\'rn\')"><span class="muted">待開學費單</span><b style="color:'+(d.renew?'var(--mk)':'var(--ok)')+'">'+d.renew+'</b></div>'+
+      '<div class="kpi" style="cursor:pointer" onclick="tab(\'rn\')"><span class="muted">已開單待繳費</span><b>'+d.renewBilled+'</b></div></div>';
+    h+='<h4 style="margin:14px 0 6px">今天（'+md(d.today)+'）的課</h4>'+(d.todays.length? d.todays.map(function(t){return '<div class="list-item"><div class="grow">'+esc(t.cls)+'　第'+t.no+'堂</div>'+(t.done?'<span style="color:var(--ok)">✓ 已點</span>':'<span class="muted">尚未點名</span>')+'</div>';}).join('') : '<p class="muted">今天沒有團班</p>');
+    if(d.missing.length) h+='<h4 style="margin:14px 0 6px;color:var(--bad)">已過但還沒點名</h4>'+d.missing.map(function(m){return '<div class="list-item"><div class="grow">'+esc(m.cls)+'　第'+m.no+'堂　'+md(m.date)+'（'+wk(m.date)+'）</div><button class="btn sm ghost" data-c="'+esc(m.cls)+'" data-d="'+m.date+'" onclick="goRoll(this.dataset.c,this.dataset.d)">去點名</button></div>';}).join('');
+    $('dashBox').innerHTML=h;
+  });
+}
+function goRoll(cls,date){ tab('roll'); curCls=cls; markChip('clsChips',cls); loadRoll(cls,date); }
+// ── 下載 Excel ──
+function xl(fn){ try{ fn(); }catch(e){ toast(e.message); } }
+function dlMatrix(){ if(S.mxCls) xl(function(){ window.XPORT.downloadMatrix([window.API.apiMatrix(S.mxCls)]); }); }
+function dlAllMatrix(){ xl(function(){ window.XPORT.downloadMatrix(S.boot.classes.map(function(c){ return window.API.apiMatrix(c.name); })); }); }
+function dlPay(){ if(S.payRes) xl(function(){ window.XPORT.downloadMonthly(S.payRes,S.payMonth); }); }
+function dlBackup(){ xl(function(){ window.XPORT.downloadBackup(window.STORE); }); }
+
+window.addEventListener('beforeunload',function(e){ if(dirtyCount()){ e.preventDefault(); e.returnValue=''; } });
+
+// ── 管理（主管）：班級、帳號、設定 ──
+var ROLE_OPTS=[['boss','主管'],['branch','分校行政'],['teacher','老師'],['assistant','助教']];
+function admTab(t){
+  S.admTab=t; markChip('admTabs',t);
+  ['cls','usr','set'].forEach(function(x){ $('adm-'+x).classList.toggle('hide',x!==t); });
+  if(t==='cls') renderClasses(); if(t==='usr') renderUsers(); if(t==='set') renderSettings();
+}
+function refreshBoot(){
+  var b=window.API.apiLogin(); var keep=S.boot; S.boot=b; setTitle(b.title||'團班點名');
+  var cls=b.classes.slice().sort(function(a,c){return c.today-a.today;}); S.boot.classes=cls;
+  $('clsChips').innerHTML=chipHtml(cls,'pickCls'); $('mxChips').innerHTML=chipHtml(cls,'loadMx'); $('roChips').innerHTML=chipHtml(cls,'loadRo');
+  $('nsClasses').innerHTML=cls.map(function(c){return '<label class="ck"><input type="checkbox" value="'+esc(c.name)+'"> '+esc(c.name)+' <span class="muted">（'+esc(c.weekday)+' '+esc(c.time)+'）</span></label>';}).join('');
+  var br=b.branches.map(function(x){return '<option>'+esc(x)+'</option>';}).join(''); $('trialBranch').innerHTML=br; $('nsBranch').innerHTML=br;
+  if(curCls) markChip('clsChips',curCls);
+}
+function fld(label,html){ return '<label style="display:block;margin:8px 0"><span class="muted" style="display:block;font-size:13px;margin-bottom:3px">'+label+'</span>'+html+'</label>'; }
+function val(id){ var e=$(id); return e? e.value : ''; }
+
+// 班級
+function renderClasses(){
+  var L=window.API.adminClasses();
+  $('clsList').innerHTML='<div class="row" style="justify-content:space-between"><b>班級（'+L.length+'）</b><button class="btn sm" onclick="editClass(\'\')">＋ 新增班級</button></div>'+
+    (L.length? L.map(function(c){ var f=c.f;
+      return '<div class="list-item"'+(f['狀態']==='結束'?' style="opacity:.55"':'')+'><div class="grow"><b>'+esc(f['班級名稱'])+'</b>'+(f['狀態']==='結束'?'<span class="tag">已結束</span>':'')+
+        '<div class="muted">週'+esc(f['星期'])+' '+esc(f['時段'])+'　'+esc(f['講師']||'未填講師')+'　'+c.sessions+'/'+esc(f['預計堂數'])+' 堂'+(c.stopped?'（停課 '+c.stopped+'）':'')+'　學生 '+c.students+'</div>'+
+        '<div class="muted">薪資：'+esc(f['薪資規則']||'（未設定）')+'</div></div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px"><button class="btn sm ghost" onclick="editClass(\''+c.id+'\')">編輯</button>'+
+        (c.sessions<Number(f['預計堂數'])?'<button class="btn sm" onclick="genSess(\''+c.id+'\')">產生堂次</button>':'')+'</div></div>';
+    }).join('') : '<div class="empty">還沒有班級，先按「新增班級」</div>');
+  $('clsForm').innerHTML='';
+}
+function editClass(id){
+  var c=id? window.API.adminClasses().filter(function(x){return x.id===id;})[0] : null, f=c? c.f : {'星期':'一','狀態':'進行中','預計堂數':24,'薪資規則':'每人1050*0.4'};
+  S.editCls=id;
+  var wd='一二三四五六日'.split('').map(function(w){return '<option'+(f['星期']===w?' selected':'')+'>'+w+'</option>';}).join('');
+  $('clsForm').innerHTML='<b>'+(id?'編輯班級':'新增班級')+'</b>'+
+    fld('班級名稱（例：國一數學班(一)）','<input id="cf_name" style="width:100%" value="'+esc(f['班級名稱']||'')+'"'+(c&&(c.hasAtt||c.students)?' disabled title="已有名單或點名紀錄，不能改名"':'')+'>')+
+    '<div class="grid2">'+fld('星期','<select id="cf_wd" style="width:100%">'+wd+'</select>')+fld('時段','<input id="cf_time" style="width:100%" placeholder="1830-2100" value="'+esc(f['時段']||'')+'">')+
+    fld('開課日（要是上面那個星期）','<input id="cf_start" type="date" style="width:100%" value="'+esc(f['開課日']||'')+'">')+fld('預計堂數','<input id="cf_n" type="number" min="1" style="width:100%" value="'+esc(f['預計堂數']||'')+'">')+'</div>'+
+    fld('停課日期（多個用逗號分開，可留空）','<input id="cf_stop" style="width:100%" placeholder="2026-10-10, 2027-01-28" value="'+esc(f['停課日期']||'')+'">')+
+    fld('薪資規則','<input id="cf_rule" style="width:100%" value="'+esc(f['薪資規則']||'')+'">'+
+      '<span class="muted" style="font-size:12px">按人數：<code>每人1050*0.4</code>　固定：<code>4000</code>　級距：<code>11+:2000, 4-10:每人200, 0-3:0</code></span>')+
+    '<div class="grid2">'+fld('講師','<input id="cf_teacher" style="width:100%" value="'+esc(f['講師']||'')+'">')+
+    fld('狀態','<select id="cf_status" style="width:100%"><option'+(f['狀態']!=='結束'?' selected':'')+'>進行中</option><option'+(f['狀態']==='結束'?' selected':'')+'>結束</option></select>')+'</div>'+
+    fld('備註','<input id="cf_note" style="width:100%" value="'+esc(f['備註']||'')+'">')+
+    '<div class="row" style="margin-top:10px"><button class="btn" onclick="saveClassForm(true)">儲存並產生堂次</button><button class="btn ghost" onclick="saveClassForm(false)">只儲存</button>'+
+    (id&&!c.hasAtt&&!c.students?'<button class="btn sm out-bad" onclick="delClass(\''+id+'\')">刪除</button>':'')+'<button class="btn sm ghost" onclick="renderClasses()">取消</button></div>'+
+    '<p class="muted" style="font-size:12px">產生堂次：從開課日起每週一堂，跳過停課日期，補到預計堂數。已排好的堂次不會被改動；之後要調課、停課，請到「點名」頁選那一堂操作。</p>';
+  $('clsForm').scrollIntoView({behavior:'smooth'});
+}
+function saveClassForm(gen){
+  var c=S.editCls? window.API.adminClasses().filter(function(x){return x.id===S.editCls;})[0] : null;
+  var f={'班級名稱': $('cf_name').disabled&&c? c.f['班級名稱'] : val('cf_name'), '星期':val('cf_wd'),'時段':val('cf_time'),'開課日':val('cf_start'),'預計堂數':val('cf_n'),
+    '停課日期':val('cf_stop'),'薪資規則':val('cf_rule'),'講師':val('cf_teacher'),'狀態':val('cf_status'),'備註':val('cf_note')};
+  call('adminSaveClass',null,S.editCls||null,f).then(function(id){
+    return gen? call('adminGenSessions',null,id).then(function(x){ toast('已儲存，共 '+x.total+' 堂'+(x.added?'（新增 '+x.added+'）':'')); }) : toast('已儲存');
+  }).then(function(){ renderClasses(); refreshBoot(); });
+}
+function genSess(id){ call('adminGenSessions',null,id).then(function(x){ toast('共 '+x.total+' 堂'+(x.added?'（新增 '+x.added+'）':'')); renderClasses(); refreshBoot(); }); }
+function delClass(id){ if(!confirm('確定刪除這個班級？')) return; call('adminDeleteClass',null,id).then(function(){ toast('已刪除'); renderClasses(); refreshBoot(); }); }
+
+// 帳號
+function roleLabel(r){ return (ROLE_OPTS.filter(function(x){return x[0]===r;})[0]||['','老師'])[1]; }
+function renderUsers(){
+  var L=window.API.adminUsers();
+  $('usrList').innerHTML='<div class="row" style="justify-content:space-between"><b>帳號（'+L.length+'）</b><button class="btn sm" onclick="editUser(\'\')">＋ 新增帳號</button></div>'+
+    L.map(function(u){ var cl=(u['可點班級']||[]);
+      return '<div class="list-item"'+(u['啟用']===true?'':' style="opacity:.55"')+'><div class="grow"><b>'+esc(u['姓名'])+'</b><span class="tag">'+roleLabel(u['角色'])+(u['分校']?'・'+esc(u['分校']):'')+'</span>'+(u['啟用']===true?'':'<span class="tag mk">停用</span>')+
+        '<div class="muted">'+esc(u.email||'')+(cl.length?'　只看：'+cl.map(esc).join('、'):'')+'</div></div><button class="btn sm ghost" onclick="editUser(\''+u.uid+'\')">編輯</button></div>';
+    }).join('');
+  $('usrForm').innerHTML='';
+}
+function editUser(uid){
+  var u=uid? window.API.adminUsers().filter(function(x){return x.uid===uid;})[0] : {'角色':'teacher','啟用':true,'可點班級':[]};
+  S.editUid=uid;
+  var classes=window.API.adminClasses().filter(function(c){return c.f['狀態']!=='結束';}).map(function(c){return c.f['班級名稱'];});
+  var pw=genPw();
+  $('usrForm').innerHTML='<b>'+(uid?'編輯帳號':'新增帳號')+'</b>'+
+    fld('姓名（會記為點名人）','<input id="uf_name" style="width:100%" value="'+esc(u['姓名']||'')+'">')+
+    fld('Email（登入用，請填本人常用的信箱，忘記密碼時會寄到這裡）','<input id="uf_email" type="email" autocapitalize="none" style="width:100%" value="'+esc(u.email||'')+'"'+(uid?' disabled':'')+'>')+
+    (uid?'':fld('初始密碼（至少 8 字、英文＋數字；請轉告本人，登入後可自己改）','<input id="uf_pw" style="width:100%" value="'+pw+'">'))+
+    '<div class="grid2">'+fld('角色','<select id="uf_role" style="width:100%" onchange="$(\'uf_brw\').classList.toggle(\'hide\',this.value!==\'branch\')">'+ROLE_OPTS.map(function(r){return '<option value="'+r[0]+'"'+(u['角色']===r[0]?' selected':'')+'>'+r[1]+'</option>';}).join('')+'</select>')+
+    '<div id="uf_brw" class="'+(u['角色']==='branch'?'':'hide')+'">'+fld('分校','<select id="uf_br" style="width:100%">'+S.boot.branches.map(function(b){return '<option'+(u['分校']===b?' selected':'')+'>'+esc(b)+'</option>';}).join('')+'</select>')+'</div></div>'+
+    fld('可點班級（都不勾 = 全部班級）', classes.map(function(c){return '<label class="ck"><input type="checkbox" class="uf_cls" value="'+esc(c)+'"'+((u['可點班級']||[]).indexOf(c)>=0?' checked':'')+'> '+esc(c)+'</label>';}).join('')||'<span class="muted">還沒有班級</span>')+
+    '<label class="ck"><input type="checkbox" id="uf_active"'+(u['啟用']!==false?' checked':'')+'> 啟用（取消勾選 = 停用，馬上不能登入使用）</label>'+
+    '<div class="row" style="margin-top:10px"><button class="btn" onclick="saveUserForm()">'+(uid?'儲存':'建立帳號')+'</button>'+
+    (uid&&u.email?'<button class="btn sm ghost" onclick="sendReset(\''+esc(u.email)+'\')">寄重設密碼信</button>':'')+'<button class="btn sm ghost" onclick="renderUsers()">取消</button></div>'+
+    '<p class="muted" style="font-size:12px">主管：全部功能｜分校行政：名單、續費、補課只限自己分校，月結只看自己分校負擔｜老師：點名、補課、總表（無薪資）｜助教：只能點名</p>';
+  $('usrForm').scrollIntoView({behavior:'smooth'});
+}
+function saveUserForm(){
+  var f={name:val('uf_name'),email:val('uf_email'),password:val('uf_pw'),role:val('uf_role'),branch:val('uf_br'),
+    classes:[].map.call(document.querySelectorAll('.uf_cls:checked'),function(x){return x.value;}),active:$('uf_active').checked};
+  var p= S.editUid? call('adminUpdateUser',null,S.editUid,f) : call('adminCreateUser',null,f,BK);
+  p.then(function(){ if(!S.editUid) alert('帳號已建立\nEmail：'+f.email.trim().toLowerCase()+'\n初始密碼：'+f.password+'\n\n請轉告本人，登入後可按右上角「密碼」自己改。'); else toast('已儲存'); renderUsers(); });
+}
+function genPw(){ var c='abcdefghjkmnpqrstuvwxyz', d='23456789', r=crypto.getRandomValues(new Uint32Array(8)), s='';
+  for(var i=0;i<8;i++) s+= i%3===2? d[r[i]%d.length] : c[r[i]%c.length]; return s.charAt(0).toUpperCase()+s.slice(1); }
+function sendReset(em){ BK.auth.reset(em).then(function(){ toast('已寄重設密碼信給 '+em); }).catch(function(e){ toast(e.message); }); }
+
+// 設定
+function renderSettings(){
+  var c=window.STORE.conf();
+  $('setForm').innerHTML='<b>系統設定</b>'+
+    fld('網頁標題','<input id="sf_title" style="width:100%" value="'+esc(c['網頁標題']||'')+'">')+
+    fld('分校（用逗號分開，順序 = 報表順序）','<input id="sf_br" style="width:100%" value="'+esc((window.STORE.branches()).join(', '))+'">')+
+    '<div class="grid2">'+fld('補課期限天數','<input id="sf_lim" type="number" style="width:100%" value="'+esc(c['補課期限天數'])+'">')+
+    fld('缺課追蹤起始日（空白 = 全部）','<input id="sf_since" type="date" style="width:100%" value="'+esc(c['缺課追蹤起始日']||'')+'">')+
+    fld('續費提醒堂數（剩幾堂就提醒）','<input id="sf_th" type="number" style="width:100%" value="'+esc(c['續費提醒堂數'])+'">')+
+    fld('預設續費堂數','<input id="sf_def" type="number" style="width:100%" value="'+esc(c['預設續費堂數'])+'">')+'</div>'+
+    '<button class="btn" style="margin-top:10px" onclick="saveSettingsForm()">儲存設定</button>';
+}
+function saveSettingsForm(){
+  call('adminSaveSettings',null,{'網頁標題':val('sf_title'),'分校':val('sf_br'),'補課期限天數':val('sf_lim'),'缺課追蹤起始日':val('sf_since'),'續費提醒堂數':val('sf_th'),'預設續費堂數':val('sf_def')})
+    .then(function(){ toast('設定已儲存'); refreshBoot(); });
+}
+
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

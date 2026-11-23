@@ -1,0 +1,73 @@
+rules_version = '2';
+
+// ═══ 團班點名系統：Firestore 安全規則 ═══
+// 安裝時把下面 ownerUids() 裡的 "請貼上你的UID" 換成你自己的 UID（和 js/config.js 的 OWNER_UIDS 一樣），
+// 再到 Firebase 主控台 → Firestore Database → 規則，整份貼上後按「發布」。
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function ownerUids() { return ["請貼上你的UID"]; }
+
+    function signedIn() { return request.auth != null; }
+    function isOwner() { return signedIn() && request.auth.uid in ownerUids(); }
+    function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasProfile() { return signedIn() && exists(userPath()); }
+    function prof() { return get(userPath()).data; }
+    function active() { return isOwner() || (hasProfile() && prof()['啟用'] == true); }
+    function role() { return isOwner() ? 'boss' : prof()['角色']; }
+    function isBoss() { return active() && role() == 'boss'; }
+    function isStaff() { return active() && (role() == 'boss' || role() == 'branch'); }
+    function notAssistant() { return active() && role() != 'assistant'; }
+    // 分校行政只能動自己分校的資料
+    function brOk(data) { return role() != 'branch' || data['分校'] == prof()['分校']; }
+
+    // 帳號：本人看得到自己的；主管可以管理全部
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isBoss());
+      allow write: if isBoss();
+    }
+
+    // 系統設定
+    match /settings/{id} {
+      allow read: if active();
+      allow write: if isBoss();
+    }
+
+    // 班級（含堂次）：大家看得到；新增／刪除只有主管；調課、停課由主管或分校行政
+    match /classes/{id} {
+      allow read: if active();
+      allow create, delete: if isBoss();
+      allow update: if isStaff();
+    }
+
+    // 薪資規則另外放，老師和助教讀不到
+    match /classPay/{id} {
+      allow read: if isStaff();
+      allow write: if isBoss();
+    }
+
+    // 名單：大家看得到；老師可以現場新增試聽生；其他異動由主管或分校行政（限自己分校）
+    match /roster/{id} {
+      allow read: if active();
+      allow create: if (isStaff() && brOk(request.resource.data))
+                    || (active() && request.resource.data['身分'] == '試聽');
+      allow update: if isStaff() && brOk(resource.data) && brOk(request.resource.data);
+      allow delete: if isBoss();
+    }
+
+    // 點名：每堂一份文件；有效帳號都能點名，搬移（調課）時的刪除限行政
+    match /attendance/{id} {
+      allow read: if active();
+      allow create, update: if active();
+      allow delete: if isStaff();
+    }
+
+    // 繳費紀錄：只有主管和分校行政（限自己分校）
+    match /payments/{id} {
+      allow read: if isStaff() && brOk(resource.data);
+      allow create: if isStaff() && brOk(request.resource.data);
+      allow delete: if isStaff() && brOk(resource.data);
+      allow update: if false;
+    }
+  }
+}
