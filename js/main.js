@@ -40,7 +40,11 @@ async function onUser(u) {
     }
     if (isOwner && prof) prof = Object.assign({}, prof, { '角色': 'boss', '啟用': true });
     if (!prof || prof['啟用'] !== true) {
-      window.UI.fatal('帳號尚未啟用', '你的帳號（' + u.email + '）還沒有被主管加入，或已經停用，請洽主管。', true);
+      const filled = OWNER_UIDS.filter(String);
+      window.UI.fatal('帳號尚未啟用', '你的帳號（' + u.email + '）還沒有被主管加入，或已經停用，請洽主管。' +
+        '<br><br><span style="font-size:13px">如果你是系統擁有者：你的使用者 UID 是<br><code style="user-select:all;word-break:break-all">' + u.uid + '</code><br>' +
+        (filled.length ? '目前 js/config.js 裡填的是 <code style="word-break:break-all">' + filled.join('、') + '</code>，兩者不一樣。' : '目前 js/config.js 的 OWNER_UIDS 還是空的。') +
+        '<br>請把上面這串 UID 貼到 js/config.js 的 OWNER_UIDS 和 firestore.rules，重新上傳、發布規則後再登入。</span>', true);
       return;
     }
     const me = { uid: u.uid, email: u.email, name: prof['姓名'] || u.email, role: prof['角色'] || 'teacher', branch: prof['分校'] || '',
