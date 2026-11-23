@@ -13,5 +13,5 @@ export const firebaseConfig = {
 // 2) 系統擁有者（主管）的 UID：Firebase 主控台 → Authentication → 使用者 → 複製你自己那一列的「使用者 UID」
 //    擁有者永遠是主管，可以登入後再幫其他人開帳號。firestore.rules 裡也要填同樣的 UID。
 export const OWNER_UIDS = [
-  "yxl.8503@gmail.com"
+  "iD6WQPXUTzTlKWySNVcICxm3uqD3"
 ];
