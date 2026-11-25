@@ -599,12 +599,13 @@ export function createApi(S) {
   A.adminBatchClasses = async function (rows, dry, gen) {
     needBoss();
     const names = new Set(S.read('CLASS').map(c => c['班級名稱'])), seen = new Set(), out = [];
+    const allSess = S.read('SESS'), le = lockEnd();
     rows.forEach((f, i) => {
       const r = { line: f._line || i + 1, name: String(f['班級名稱'] || '').trim(), ok: false, msg: '' };
       try {
         if (!r.name) throw new Error('沒有班級名稱');
-        if (names.has(r.name)) throw new Error('已經有這個班級');
         if (seen.has(r.name)) throw new Error('和上面重複');
+        if (names.has(r.name)) { seen.add(r.name); planExtend(r, f, allSess, le); return; }
         const start = L.normDateStr(f['開課日']);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) throw new Error('開課日格式不對（例：2027-02-15）');
         const wd = normWeekday(f['星期'], start);
@@ -620,9 +621,47 @@ export function createApi(S) {
       } catch (e) { r.msg = e.message; }
       out.push(r);
     });
+    // 已存在的班級：planExtend 已經 push
+    function planExtend(r, f, allSess, le) {
+      try {
+        const c = S.read('CLASS').filter(x => x['班級名稱'] === r.name)[0];
+        const start = L.normDateStr(f['開課日'] || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) throw new Error('已經有這個班級；要往前補堂次的話，開課日格式要對（例：2026-11-06）');
+        const cwd = String(c['星期'] || '').replace(/^(週|星期)/, ''), swd = L.WEEK.charAt(L.weekdayOf(start));
+        if (swd !== cwd) throw new Error('已經有這個班級（星期' + cwd + '）；開課日 ' + start + ' 是星期' + swd + '，對不上');
+        if (f['星期'] && normWeekday(f['星期'], start) !== cwd) throw new Error('已經有這個班級；表格的星期和這班的星期' + cwd + '不一樣');
+        const mine = allSess.filter(s => s['班級'] === r.name).sort((a, b) => a['日期'] < b['日期'] ? -1 : 1);
+        if (!mine.length) throw new Error('已經有這個班級，但還沒有堂次；請到班級列表按「產生堂次」');
+        const first = mine[0]['日期'];
+        if (start >= first) { r.skip = true; r.msg = '已經有這個班級，開課日不早於現有第一堂（' + first + '），不用補'; out.push(r); return; }
+        if (le && start <= le) throw new Error('已經有這個班級；' + start + ' 落在已結算的月份（已結算至 ' + le.slice(0, 7) + '），不能往前補');
+        const stops = String(f['停課日期'] || '').split(/[,，、\s]+/).filter(String).map(L.normDateStr).filter(d => d >= start && d < first);
+        const add = [];
+        for (let d = start, g = 0; d < first && g < 200; d = L.addDays(d, 7), g++) add.push({ '日期': d, '狀態': stops.indexOf(d) >= 0 ? '停課' : '上課', '備註': '' });
+        stops.forEach(d => { if (!add.some(a => a['日期'] === d)) add.push({ '日期': d, '狀態': '停課', '備註': '' }); });
+        const n = add.filter(a => a['狀態'] === '上課').length;
+        if (!n) throw new Error('已經有這個班級；' + start + ' 到 ' + first + ' 之間都是停課，沒有要補的');
+        let no = 0;
+        const list = add.concat(mine.map(s => ({ '日期': s['日期'], '狀態': s['狀態'], '備註': s['備註'] || '' })))
+          .sort((a, b) => a['日期'] < b['日期'] ? -1 : 1).map(s => Object.assign(s, { '堂次': s['狀態'] === '上課' ? ++no : '' }));
+        const oldStops = String(c['停課日期'] || '').split(/[,，、\s]+/).filter(String);
+        r.ext = { id: c._id, sessions: list, n, from: start, first,
+                  fields: { '開課日': start < (c['開課日'] || '9999') ? start : c['開課日'], '預計堂數': (Number(c['預計堂數']) || 0) + n,
+                            '停課日期': oldStops.concat(stops.filter(d => oldStops.indexOf(d) < 0)).join('、') } };
+        const lastAdd = add.filter(a => a['狀態'] === '上課').map(a => a['日期']).sort().pop();
+        r.ok = true; r.msg = '已有班級：往前補 ' + n + ' 堂（' + start + '～' + lastAdd + (stops.length ? '，停課 ' + stops.join('、') : '') + '），補完共 ' + no + ' 堂';
+      } catch (e) { r.msg = e.message; }
+      out.push(r);
+    }
+    out.sort((a, b) => a.line - b.line);
     if (dry) return out;
-    let done = 0;
-    for (const r of out.filter(x => x.ok)) {
+    let done = 0, ext = 0;
+    for (const r of out.filter(x => x.ok && x.ext)) {
+      await S.W.saveClass(r.ext.id, Object.assign({}, r.ext.fields, { sessions: r.ext.sessions.map(x => ({ '日期': x['日期'], '堂次': x['堂次'], '狀態': x['狀態'], '備註': x['備註'] })) }));
+      await log('管理', '往前補堂次', r.name, '', r.msg.replace(/^已有班級：/, ''));
+      ext++;
+    }
+    for (const r of out.filter(x => x.ok && !x.ext)) {
       const f = r.f;
       const fields = { '班級名稱': f['班級名稱'], '星期': f['星期'], '時段': String(f['時段'] || ''), '開課日': f['開課日'], '預計堂數': f['預計堂數'],
                        '停課日期': String(f['停課日期'] || ''), '講師': String(f['講師'] || ''), '狀態': '進行中', '備註': String(f['備註'] || ''), sessions: [] };
@@ -631,7 +670,7 @@ export function createApi(S) {
       done++;
     }
     if (done) await log('管理', '批次新增班級', out.filter(x => x.ok).map(x => x.name).join('、'), done + ' 班', gen ? '已產生堂次' : '未產生堂次');
-    return out.map(x => ({ line: x.line, name: x.name, ok: x.ok, msg: x.msg, imported: x.ok }));
+    return out.map(x => ({ line: x.line, name: x.name, ok: x.ok, skip: !!x.skip, msg: x.msg, imported: x.ok && !x.ext, extended: x.ok && !!x.ext }));
   };
 
   A.adminGenSessions = async function (id) {
