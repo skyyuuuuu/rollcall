@@ -741,7 +741,8 @@ function renderClasses(){
     (L.length? L.map(function(c){ var f=c.f;
       return '<div class="list-item"'+(f['狀態']==='結束'?' style="opacity:.55"':'')+'><div class="grow"><b>'+esc(f['班級名稱'])+'</b>'+(f['狀態']==='結束'?'<span class="tag">已結束</span>':'')+
         '<div class="muted">週'+esc(f['星期'])+' '+esc(f['時段'])+'　'+esc(f['講師']||'未填講師')+'　'+c.sessions+'/'+esc(f['預計堂數'])+' 堂'+(c.stopped?'（停課 '+c.stopped+'）':'')+'　學生 '+c.students+'</div>'+
-        '<div class="muted">薪資：'+esc(f['薪資規則']||'（未設定）')+'</div></div>'+
+        '<div class="muted">薪資：'+esc(f['薪資規則']||'（未設定）')+'</div>'+
+        (c.odd.length?'<div style="color:var(--bad);font-size:13px">⚠ 有 '+c.odd.length+' 堂排在開課日之前（'+c.odd.map(function(o){return o.date;}).join('、')+'），按「編輯」可以移除</div>':'')+'</div>'+
         '<div style="display:flex;flex-direction:column;gap:6px"><button class="btn sm ghost" onclick="editClass(\''+c.id+'\')">編輯</button>'+
         (c.sessions<Number(f['預計堂數'])?'<button class="btn sm" onclick="genSess(\''+c.id+'\')">產生堂次</button>':'')+'</div></div>';
     }).join('') : '<div class="empty">還沒有班級，先按「新增班級」</div>');
@@ -762,7 +763,10 @@ function editClass(id){
     fld('狀態','<select id="cf_status" style="width:100%"><option'+(f['狀態']!=='結束'?' selected':'')+'>進行中</option><option'+(f['狀態']==='結束'?' selected':'')+'>結束</option></select>')+'</div>'+
     fld('備註','<input id="cf_note" style="width:100%" value="'+esc(f['備註']||'')+'">')+
     '<div class="row" style="margin-top:10px"><button class="btn" onclick="saveClassForm(true)">儲存並產生堂次</button><button class="btn ghost" onclick="saveClassForm(false)">只儲存</button>'+
-    (id&&!c.hasAtt&&!c.students?'<button class="btn sm out-bad" onclick="delClass(\''+id+'\')">刪除</button>':'')+'<button class="btn sm ghost" onclick="renderClasses()">取消</button></div>'+
+    (id?'<button class="btn sm out-bad" onclick="delClass(\''+id+'\')">刪除班級</button>':'')+'<button class="btn sm ghost" onclick="renderClasses()">取消</button></div>'+
+    (c&&c.odd.length?'<div style="margin-top:10px;padding:8px;border:1px solid var(--bad);border-radius:8px"><b style="color:var(--bad)">⚠ 排在開課日之前的堂次</b><p class="muted" style="font-size:13px;margin:4px 0">通常是停課日期打錯年份產生的。確認不需要就按「移除」。</p>'+
+      c.odd.map(function(o){ return '<div class="list-item"><div class="grow">'+o.date+'（星期'+'日一二三四五六'.charAt(new Date(o.date+'T00:00:00').getDay())+'）<span class="tag">'+esc(o.status)+'</span>'+(o.hasAtt?'<span class="muted">　有點名紀錄，不能移除</span>':'')+'</div>'+
+        (o.hasAtt?'':'<button class="btn sm out-bad" onclick="rmSess(\''+id+'\',\''+o.date+'\')">移除</button>')+'</div>'; }).join('')+'</div>':'')+
     '<p class="muted" style="font-size:12px">產生堂次：從開課日起每週一堂，跳過停課日期，補到預計堂數。已排好的堂次不會被改動；之後要調課、停課，請到「點名」頁選那一堂操作。</p>';
   $('clsForm').scrollIntoView({behavior:'smooth'});
 }
@@ -772,10 +776,17 @@ function saveClassForm(gen){
     '停課日期':val('cf_stop'),'薪資規則':val('cf_rule'),'講師':val('cf_teacher'),'狀態':val('cf_status'),'備註':val('cf_note')};
   call('adminSaveClass',null,S.editCls||null,f).then(function(id){
     return gen? call('adminGenSessions',null,id).then(function(x){ toast('已儲存，共 '+x.total+' 堂'+(x.added?'（新增 '+x.added+'）':'')); }) : toast('已儲存');
-  }).then(function(){ renderClasses(); refreshBoot(); });
+  }).then(function(){ renderClasses(); refreshBoot(); }).catch(function(){});
 }
 function genSess(id){ call('adminGenSessions',null,id).then(function(x){ toast('共 '+x.total+' 堂'+(x.added?'（新增 '+x.added+'）':'')); renderClasses(); refreshBoot(); }); }
-function delClass(id){ if(!confirm('確定刪除這個班級？')) return; call('adminDeleteClass',null,id).then(function(){ toast('已刪除'); renderClasses(); refreshBoot(); }); }
+function delClass(id){
+  var c=window.API.adminClasses().filter(function(x){return x.id===id;})[0]; if(!c) return;
+  var n=c.f['班級名稱'];
+  if(c.hasAtt) return alert('「'+n+'」已經有點名紀錄，不能刪除（會影響薪資）。\n不再上課的話，請把「狀態」改成「結束」再儲存。');
+  if(c.pays) return alert('「'+n+'」已經有 '+c.pays+' 筆繳費紀錄，不能刪除。\n不再上課的話，請把「狀態」改成「結束」再儲存。');
+  if(!confirm('確定刪除「'+n+'」？'+(c.students?'\n名單上的 '+c.students+' 位學生也會一起從這班移除。':'')+'\n刪除後無法復原。')) return;
+  call('adminDeleteClass',null,id).then(function(){ toast('已刪除「'+n+'」'); renderClasses(); refreshBoot(); });
+}
 
 // 帳號
 function roleLabel(r){ return (ROLE_OPTS.filter(function(x){return x[0]===r;})[0]||['','老師'])[1]; }
@@ -1061,6 +1072,11 @@ function renderLock(m, settled){
 function setSettled(m){
   if(!confirm('確定把「已結算至」設為 '+m+'？\n之後開始上課日在 '+m+'（含）以前的學生，就不能再改開始日。')) return;
   call('apiSetSettled',null,m).then(function(){ toast('已結算至 '+m); renderLock($('payMonth').value,m); });
+}
+
+function rmSess(id,date){
+  if(!confirm('移除 '+date+' 這一堂？')) return;
+  call('adminRemoveSession',null,id,date).then(function(){ toast('已移除 '+date); renderClasses(); editClass(id); refreshBoot(); });
 }
 
 </script>
