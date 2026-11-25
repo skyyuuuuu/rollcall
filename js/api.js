@@ -555,7 +555,10 @@ export function createApi(S) {
       id: c._id, f: c, sessions: sess.filter(s => s['班級'] === c['班級名稱'] && s['狀態'] === '上課').length,
       stopped: sess.filter(s => s['班級'] === c['班級名稱'] && s['狀態'] === '停課').length,
       hasAtt: att.some(a => a['班級'] === c['班級名稱']),
-      students: S.read('ROSTER').filter(r => r['班級'] === c['班級名稱']).length
+      students: S.read('ROSTER').filter(r => r['班級'] === c['班級名稱']).length,
+      pays: S.read('PAY').filter(p => p['班級'] === c['班級名稱']).length,
+      odd: c['開課日'] ? sess.filter(s => s['班級'] === c['班級名稱'] && s['日期'] < c['開課日'])
+        .map(s => ({ date: s['日期'], status: s['狀態'], hasAtt: att.some(a => a['班級'] === c['班級名稱'] && a['日期'] === s['日期']) })) : []
     })).sort((a, b) => (a.f['狀態'] === '結束') - (b.f['狀態'] === '結束') || (a.f['班級名稱'] < b.f['班級名稱'] ? -1 : 1));
   };
   /** 星期可以填「一」「週一」「星期一」「1」～「7」，空白時由開課日推算 */
@@ -565,6 +568,23 @@ export function createApi(S) {
     if (w === '天') w = '日';
     if (!w && /^\d{4}-\d{2}-\d{2}$/.test(start)) w = L.WEEK.charAt(L.weekdayOf(start));
     return w;
+  };
+  /** 檢查停課日期：格式、要在開課日（含）之後、要是上課的星期、不能比預計最後一堂晚太多。
+   *  回傳整理好的日期陣列；有問題就丟出錯誤，一次列出全部 */
+  const checkStops = (str, start, wd, n, lastKnown) => {
+    const raw = String(str || '').split(/[,，、\s]+/).filter(String);
+    const bad = [], out = [];
+    const maxEnd = [L.addDays(start, 7 * ((Number(n) || 0) + raw.length)), lastKnown || ''].sort().pop();
+    raw.forEach(x => {
+      const d = L.normDateStr(x);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || new Date(Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10))).toISOString().slice(0, 10) !== d) return bad.push(x + ' 不是正確的日期');
+      if (d < start) return bad.push(d + ' 在開課日 ' + start + ' 之前');
+      if (L.WEEK.charAt(L.weekdayOf(d)) !== wd) return bad.push(d + ' 是星期' + L.WEEK.charAt(L.weekdayOf(d)) + '，不是星期' + wd);
+      if (d > maxEnd) return bad.push(d + ' 比預計最後一堂晚太多');
+      if (out.indexOf(d) < 0) out.push(d);
+    });
+    if (bad.length) throw new Error('停課日期有誤：' + bad.join('；') + '（是不是年份打錯？）');
+    return out.sort();
   };
   A.adminSaveClass = async function (id, f) {
     needBoss();
@@ -585,6 +605,8 @@ export function createApi(S) {
     if (!(n > 0 && n <= 200)) throw new Error('預計堂數要是 1～200');
     if (!String(f['薪資規則'] || '').trim()) throw new Error('請填薪資規則');
     L.parseRule(f['薪資規則']); // 規則寫錯會在這裡丟出錯誤
+    const lastKnown = old ? S.read('SESS').filter(s => s['班級'] === old['班級名稱']).map(s => s['日期']).sort().pop() : '';
+    f['停課日期'] = checkStops(f['停課日期'], start, f['星期'], n, lastKnown).join(', ');
     const fields = { '班級名稱': name, '星期': f['星期'], '時段': String(f['時段'] || ''), '開課日': start, '預計堂數': n,
                      '停課日期': String(f['停課日期'] || ''), '講師': String(f['講師'] || ''), '狀態': f['狀態'] === '結束' ? '結束' : '進行中', '備註': String(f['備註'] || '') };
     if (!old) fields.sessions = [];
@@ -615,7 +637,8 @@ export function createApi(S) {
         if (!(n > 0 && n <= 200)) throw new Error('預計堂數要是 1～200');
         if (!String(f['薪資規則'] || '').trim()) throw new Error('沒有薪資規則');
         L.parseRule(f['薪資規則']);
-        r.f = Object.assign({}, f, { '班級名稱': r.name, '星期': wd, '開課日': start, '預計堂數': n });
+        const stops = checkStops(f['停課日期'], start, wd, n);
+        r.f = Object.assign({}, f, { '班級名稱': r.name, '星期': wd, '開課日': start, '預計堂數': n, '停課日期': stops.join(', ') });
         r.ok = true; r.msg = '週' + wd + ' ' + (f['時段'] || '') + '，' + start + ' 起 ' + n + ' 堂';
         seen.add(r.name);
       } catch (e) { r.msg = e.message; }
@@ -635,7 +658,8 @@ export function createApi(S) {
         const first = mine[0]['日期'];
         if (start >= first) { r.skip = true; r.msg = '已經有這個班級，開課日不早於現有第一堂（' + first + '），不用補'; out.push(r); return; }
         if (le && start <= le) throw new Error('已經有這個班級；' + start + ' 落在已結算的月份（已結算至 ' + le.slice(0, 7) + '），不能往前補');
-        const stops = String(f['停課日期'] || '').split(/[,，、\s]+/).filter(String).map(L.normDateStr).filter(d => d >= start && d < first);
+        const lastS = mine[mine.length - 1]['日期'];
+        const stops = checkStops(f['停課日期'], start, cwd, (Number(c['預計堂數']) || 0) + 60, lastS).filter(d => d < first);
         const add = [];
         for (let d = start, g = 0; d < first && g < 200; d = L.addDays(d, 7), g++) add.push({ '日期': d, '狀態': stops.indexOf(d) >= 0 ? '停課' : '上課', '備註': '' });
         stops.forEach(d => { if (!add.some(a => a['日期'] === d)) add.push({ '日期': d, '狀態': '停課', '備註': '' }); });
@@ -683,14 +707,31 @@ export function createApi(S) {
     if (plan.length !== mine.length) await log('管理', '產生堂次', c['班級名稱'], '', '新增 ' + (plan.length - mine.length) + ' 堂，共 ' + plan.filter(s => s['狀態'] === '上課').length + ' 堂');
     return { total: plan.filter(s => s['狀態'] === '上課').length, added: plan.length - mine.length };
   };
+  /** 移除單一堂次（用來清掉打錯日期產生的堂次）；有點名紀錄的不能移除 */
+  A.adminRemoveSession = async function (id, date) {
+    needBoss();
+    const c = S.read('CLASS').filter(x => x._id === id)[0];
+    if (!c) throw new Error('找不到班級');
+    const n = c['班級名稱'], mine = S.read('SESS').filter(s => s['班級'] === n);
+    const hit = mine.filter(s => s['日期'] === date)[0];
+    if (!hit) throw new Error('找不到 ' + date + ' 這一堂');
+    if (S.read('ATT').some(a => a['班級'] === n && a['日期'] === date)) throw new Error(date + ' 已經有點名紀錄，不能移除；請到「點名」頁處理');
+    const le = lockEnd();
+    if (le && date <= le) throw new Error(date + ' 在已結算的月份，不能移除');
+    await S.W.setSessions(n, L.renumber(mine.filter(s => s['日期'] !== date)));
+    await log('管理', '移除堂次', n, date, hit['狀態'] + (hit['堂次'] ? ' 第' + hit['堂次'] + '堂' : ''));
+    return true;
+  };
   A.adminDeleteClass = async function (id) {
     needBoss();
     const c = S.read('CLASS').filter(x => x._id === id)[0];
     if (!c) throw new Error('找不到班級');
-    if (S.read('ATT').some(a => a['班級'] === c['班級名稱']) || S.read('ROSTER').some(r => r['班級'] === c['班級名稱']))
-      throw new Error('這個班已經有名單或點名紀錄，不能刪除；請改成「結束」');
-    await S.W.deleteClass(id);
-    await log('管理', '刪除班級', c['班級名稱'], '', '');
+    const n = c['班級名稱'];
+    if (S.read('ATT').some(a => a['班級'] === n)) throw new Error('這個班已經有點名紀錄，不能刪除（會影響薪資）；不再上課請把狀態改成「結束」');
+    if (S.read('PAY').some(p => p['班級'] === n)) throw new Error('這個班已經有繳費紀錄，不能刪除；不再上課請把狀態改成「結束」');
+    const ro = S.read('ROSTER').filter(r => r['班級'] === n);
+    await S.W.deleteClass(id, ro.map(r => r._id));
+    await log('管理', '刪除班級', n, '', ro.length ? '連同名單 ' + ro.length + ' 位：' + ro.map(r => r['分校'] + ' ' + r['學生姓名']).join('、') : '');
     return true;
   };
 

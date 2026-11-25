@@ -88,7 +88,9 @@ export function createStore(B, me) {
       await B.db.batch(ops);
       return id;
     },
-    async deleteClass(id) { await B.db.batch([{ op: 'del', col: COL.CLASS, id }, { op: 'del', col: COL.PAY_RULE, id }]); },
+    async deleteClass(id, rosterIds) {
+      await B.db.batch([{ op: 'del', col: COL.CLASS, id }, { op: 'del', col: COL.PAY_RULE, id }].concat((rosterIds || []).map(r => ({ op: 'del', col: COL.ROSTER, id: r }))));
+    },
     async setSessions(clsName, list) {
       const c = classByName(clsName); if (!c) throw new Error('找不到班級：' + clsName);
       const clean = list.map(s => ({ '日期': s['日期'], '堂次': s['堂次'] === '' || s['堂次'] == null ? '' : Number(s['堂次']), '狀態': s['狀態'] || '上課', '備註': s['備註'] || '' }));
