@@ -271,7 +271,9 @@ function toast(t){ var e=$('toast'); e.textContent=t; e.classList.add('on'); cle
 /** 呼叫功能層（第二個參數是舊版的 PIN，已不使用） */
 function call(fn){
   var args=[].slice.call(arguments,2);
-  return Promise.resolve().then(function(){ return window.API[fn].apply(null,args); })
+  return Promise.resolve().then(function(){
+      if(typeof window.API[fn]!=='function') throw new Error('網頁版本不一致：找不到功能「'+fn+'」。請確認 js/api.js 已更新到 js 資料夾裡，再按 Ctrl+Shift+R（手機請清除快取）重新整理');
+      return window.API[fn].apply(null,args); })
     .catch(function(e){ console.error(e); toast(e.message||String(e)); throw e; });
 }
 function md(d){ return d? d.slice(5).replace('-','/') : ''; }
@@ -939,7 +941,7 @@ function batchBox(prefix, cols, help, verb){
 function showPreview(prefix, res, unit, verb){
   verb=verb||'匯入';
   var okN=res.filter(function(r){return r.ok;}).length, skN=res.filter(function(r){return r.skip;}).length, badN=res.length-okN-skN;
-  $(prefix+'Prev').innerHTML='<div class="muted" style="margin-bottom:4px">可以'+verb+' <b style="color:var(--ok)">'+okN+'</b> '+unit+(skN?'，'+skN+' 列日期沒變（略過）':'')+(badN?'，<b style="color:var(--bad)">'+badN+'</b> 列有問題（不會'+verb+'，修正後再檢查一次）':'')+'</div>'+
+  $(prefix+'Prev').innerHTML='<div class="muted" style="margin-bottom:4px">可以'+verb+' <b style="color:var(--ok)">'+okN+'</b> '+unit+(skN?'，'+skN+' 列不用變更（略過）':'')+(badN?'，<b style="color:var(--bad)">'+badN+'</b> 列有問題（不會'+verb+'，修正後再檢查一次）':'')+'</div>'+
     '<div class="tbl-wrap"><table><thead><tr><th>列</th><th class="nm">名稱</th><th></th><th style="text-align:left">說明</th></tr></thead><tbody>'+
     res.map(function(r){ return '<tr'+(r.skip?' style="opacity:.5"':'')+'><td>'+r.line+'</td><td class="nm">'+esc(r.name||'—')+'</td><td style="color:'+(r.ok?'var(--ok)':(r.skip?'#888':'var(--bad)'))+'">'+(r.ok?'✓':(r.skip?'—':'✗'))+'</td><td style="text-align:left;white-space:normal">'+esc(r.msg)+'</td></tr>'; }).join('')+
     '</tbody></table></div>';
@@ -948,7 +950,7 @@ function showPreview(prefix, res, unit, verb){
 
 // 班級
 function batchClassesForm(){
-  $('clsForm').innerHTML='<b>批次新增班級</b>'+batchBox('bc',BC_COLS,'一列一個班。星期可以留空（會照開課日自動判斷）；停課日期、備註可以不填。');
+  $('clsForm').innerHTML='<b>批次新增班級</b>'+batchBox('bc',BC_COLS,'一列一個班。星期可以留空（會照開課日自動判斷）；停課日期、備註可以不填。<br>已經有的班級：如果開課日比現有第一堂早，會往前補堂次到第一堂（只動堂次，時段、講師、薪資規則等不會改）。');
   $('bcOpts').innerHTML='<label class="ck"><input type="checkbox" id="bcGen" checked> 匯入後直接產生堂次</label>';
   $('clsForm').scrollIntoView({behavior:'smooth'});
 }
@@ -963,7 +965,8 @@ function bcImport(){
   if(!confirm('確定'+$('bcGo').textContent+'？')) return;
   $('bcGo').disabled=true;
   call('adminBatchClasses',null,S.bcRows,false,$('bcGen').checked).then(function(res){
-    toast('已新增 '+res.filter(function(r){return r.imported;}).length+' 班'); renderClasses(); refreshBoot();
+    var a=res.filter(function(r){return r.imported;}).length, e=res.filter(function(r){return r.extended;}).length;
+    toast((a?'已新增 '+a+' 班':'')+(a&&e?'，':'')+(e?'已往前補 '+e+' 班的堂次':'')); renderClasses(); refreshBoot();
   }).catch(function(){ $('bcGo').disabled=false; });
 }
 
