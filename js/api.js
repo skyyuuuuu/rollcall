@@ -308,6 +308,110 @@ export function createApi(S) {
     return out;
   };
 
+  /** 已結算月份的最後一天（設定「已結算至」= 'yyyy-MM'；沒設定 = ''） */
+  const lockEnd = () => { const m = String(conf()['已結算至'] || ''); return /^\d{4}-\d{2}$/.test(m) ? L.lastDayOf(m) : ''; };
+  const ROSTER_KEYS = ['班級', '分校', '學生姓名', '身分', '加入日', '正式起日', '退班日', '家長聯絡', '備註', '續費開單日'];
+
+  /** 檢查一位學生能不能把開始上課日改成 nd；可以就回傳 { rec, msg } */
+  function planStart(r, nd, t, att) {
+    if (!r) throw new Error('名單裡找不到這位學生');
+    if (!brOk(r['分校'])) throw new Error('你只能修改' + au.branch + '的學生');
+    if (r['身分'] === '試聽') throw new Error('還是試聽生，請用「轉正」設定正式上課日');
+    if (r['退班日'] && r['退班日'] <= t) throw new Error('已在 ' + r['退班日'] + ' 退班');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nd || '')) throw new Error('開始上課日格式不對（例：2027-02-15）');
+    if (r['退班日'] && nd >= r['退班日']) throw new Error('開始上課日要早於退班日 ' + r['退班日']);
+    const old = r['正式起日'] || r['加入日'] || '';
+    if (old === nd) { const e = new Error('日期沒變（' + nd + '），略過'); e.skip = true; throw e; }
+    const le = lockEnd();
+    if (le && nd <= le) throw new Error('新日期落在已結算的月份（已結算至 ' + le.slice(0, 7) + '），不能改');
+    if (le && old && old <= le) throw new Error('原本的開始日 ' + old + ' 在已結算的月份（已結算至 ' + le.slice(0, 7) + '），改了會影響已結算的應到和薪資，不能改');
+    const rec = {}; ROSTER_KEYS.forEach(k => { rec[k] = r[k] == null ? '' : r[k]; });
+    const hadTrial = r['加入日'] && r['正式起日'] && r['加入日'] < r['正式起日'];
+    rec['正式起日'] = nd;
+    if (!hadTrial || !rec['加入日'] || nd < rec['加入日']) rec['加入日'] = nd;
+    let msg = (old || '（空白）') + ' → ' + nd;
+    if (old && nd > old) {
+      const lost = att.filter(a => a['班級'] === r['班級'] && a['分校'] === r['分校'] && a['學生姓名'] === r['學生姓名'] &&
+                                   a['日期'] >= old && a['日期'] < nd && a['狀態'] && a['狀態'] !== '☆').length;
+      if (lost) msg += '（注意：' + nd + ' 以前已有 ' + lost + ' 筆點名，改完那幾堂不再算他）';
+    }
+    return { rec, msg, old };
+  }
+  async function writeStarts(out, recs, how) {
+    if (!recs.length) return;
+    await S.W.putRosterMany(recs);
+    await log('名單', '批次修改開始上課日', [...new Set(recs.map(r => r['班級']))].join('、'), recs.length + ' 筆（' + how + '）',
+      out.filter(x => x.ok).map(x => x.name + ' ' + x.msg.replace(/（注意.*$/, '')).join('；'));
+  }
+
+  /** 名單頁勾選：items = [{cls, branch, name}]，全部改成同一天 */
+  A.apiBatchStart = async function (items, date, dry) {
+    needStaff();
+    const t = today(), nd = L.normDateStr(date || ''), att = S.read('ATT'), out = [], recs = [];
+    (items || []).forEach((it, i) => {
+      const base = { line: i + 1, name: it.name, ok: false, msg: '' };
+      try { const p = planStart(findRoster(it.cls, it.branch, it.name), nd, t, att); recs.push(p.rec); base.ok = true; base.msg = it.branch + '｜' + p.msg; }
+      catch (e) { base.msg = e.message; base.skip = !!e.skip; }
+      out.push(base);
+    });
+    if (!dry) await writeStarts(out, recs, '勾選');
+    return out;
+  };
+
+  /** Excel：每列 學生姓名、分校、班級（可多班，用「、」分開）、開始上課日 */
+  A.apiBatchStartRows = async function (rows, dry) {
+    needStaff();
+    const t = today(), att = S.read('ATT'), roster = S.read('ROSTER'), brs = S.branches(), seen = new Set(), out = [], recs = [];
+    (rows || []).forEach((f, i) => {
+      const name = String(f['學生姓名'] || '').trim();
+      const base = { line: f._line || i + 1, name, ok: false, msg: '' };
+      try {
+        if (!name) throw new Error('沒有學生姓名');
+        const cl = String(f['班級'] || '').split(/[、,，;；\n]+/).map(s => s.trim()).filter(String);
+        if (!cl.length) throw new Error('沒有班級');
+        const nd = L.normDateStr(f['開始上課日'] || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(nd)) throw new Error(f['開始上課日'] ? '開始上課日格式不對（例：2027-02-15）' : '沒有開始上課日');
+        let br = String(f['分校'] || '').trim();
+        if (br && brs.indexOf(br) < 0) throw new Error('分校要是 ' + brs.join('／') + ' 其中一個');
+        const done = [], errs = [], mine = [], same = [];
+        cl.forEach(c => {
+          try {
+            let b = br;
+            if (!b) {
+              const hit = roster.filter(r => r['班級'] === c && r['學生姓名'] === name && brOk(r['分校']));
+              if (hit.length > 1) throw new Error('兩個分校都有同名學生，請填分校');
+              b = hit.length ? hit[0]['分校'] : (au.role === 'branch' ? au.branch : '');
+            }
+            const k = c + '|' + b + '|' + name;
+            if (seen.has(k)) throw new Error('表格裡重複了');
+            const r = findRoster(c, b, name);
+            if (!r) throw new Error('名單裡沒有這位學生');
+            const p = planStart(r, nd, t, att);
+            seen.add(k); mine.push(p.rec); done.push(c + ' ' + p.msg);
+          } catch (e) { if (e.skip) same.push(c); else errs.push(c + '：' + e.message); }
+        });
+        if (errs.length) throw new Error(errs.join('；'));
+        if (!mine.length) { base.skip = true; base.msg = '日期沒變（' + nd + '），略過'; }
+        else { recs.push(...mine); base.ok = true; base.msg = done.join('；') + (same.length ? '（' + same.join('、') + ' 日期沒變）' : ''); }
+      } catch (e) { base.msg = e.message; }
+      out.push(base);
+    });
+    if (!dry) await writeStarts(out, recs, 'Excel');
+    return out;
+  };
+
+  /** 主管：設定「已結算至」哪個月（month = 'yyyy-MM'，'' = 取消） */
+  A.apiSetSettled = async function (month) {
+    needBoss();
+    const m = String(month || '');
+    if (m && !/^\d{4}-\d{2}$/.test(m)) throw new Error('月份格式不對');
+    const cur = String(conf()['已結算至'] || '');
+    if (m === cur) return m;
+    await S.W.saveSettings({ '已結算至': m });
+    await log('月結', '設定已結算月份', '', m || '（取消）', (cur || '（無）') + ' → ' + (m || '（無）'));
+    return m;
+  };
+
   A.apiTrials = function () {
     needStaff();
     const t = today(), since = L.addDays(t, -14);
@@ -407,7 +511,7 @@ export function createApi(S) {
     needStaff();
     const br = S.branches();
     const res = L.monthlyPayroll(month, S.read('CLASS').filter(c => c['班級名稱']), S.read('SESS'), S.read('ROSTER'), S.read('ATT'), br, S.cutoffs());
-    res.branches = br; res.showTotal = true; res.canSetCutoff = au.role === 'boss'; res.allBranches = br;
+    res.branches = br; res.showTotal = true; res.canSetCutoff = au.role === 'boss'; res.allBranches = br; res.settled = String(conf()['已結算至'] || '');
     if (au.role === 'branch') {
       const b = au.branch, only = sp => { const o = {}; o[b] = sp[b] || 0; return o; };
       res.rows = res.rows.filter(x => x.raw[b] > 0 || x.prevList.some(p => p.branch === b) || x.detail.some(d => d.split[b])).map(x => {
@@ -597,7 +701,8 @@ export function createApi(S) {
     const since = L.normDateStr(f['缺課追蹤起始日'] || '');
     await S.W.saveSettings({ '分校': br, '補課期限天數': num(f['補課期限天數'], 14, 1, 365), '續費提醒堂數': num(f['續費提醒堂數'], 6, 0, 100),
                              '預設續費堂數': num(f['預設續費堂數'], 12, 1, 200), '缺課追蹤起始日': /^\d{4}-\d{2}-\d{2}$/.test(since) ? since : '',
-                             '網頁標題': String(f['網頁標題'] || '團班點名').slice(0, 40) });
+                             '網頁標題': String(f['網頁標題'] || '團班點名').slice(0, 40),
+                             '已結算至': /^\d{4}-\d{2}$/.test(String(f['已結算至'] || '')) ? String(f['已結算至']) : '' });
     await log('管理', '修改系統設定', '', '', '分校 ' + br.join('、'));
     return true;
   };

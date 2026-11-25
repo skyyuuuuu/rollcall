@@ -2,7 +2,7 @@
 import { normDateStr } from './logic.js';
 
 export const COL = { CLASS: 'classes', PAY_RULE: 'classPay', ROSTER: 'roster', ATT: 'attendance', PAY: 'payments', SET: 'settings', USER: 'users', LOG: 'logs' };
-export const DEFAULT_SETTINGS = { '分校': ['光武', '科園'], '補課期限天數': 14, '缺課追蹤起始日': '', '續費提醒堂數': 6, '預設續費堂數': 12, '網頁標題': '團班點名', '補課統計至': {} };
+export const DEFAULT_SETTINGS = { '分校': ['光武', '科園'], '補課期限天數': 14, '缺課追蹤起始日': '', '續費提醒堂數': 6, '預設續費堂數': 12, '網頁標題': '團班點名', '補課統計至': {}, '已結算至': '' };
 
 /** Firestore 文件 id 不能有「/」 */
 export function idOf() { return [].slice.call(arguments).map(x => String(x).replace(/\//g, '／')).join('｜'); }
