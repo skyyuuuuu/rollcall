@@ -183,6 +183,7 @@ label.ck{display:flex;gap:6px;align-items:center;padding:4px 0;font-size:15px}
         <button class="btn" style="margin-top:8px" onclick="addStudent()">新增到勾選的班級</button>
       </div>
       <div class="card"><details id="bsBox" ontoggle="if(this.open)batchStudentsForm()"><summary><b>批次新增學生</b>（從 Excel 貼上或上傳檔案）</summary><div id="bsForm"></div></details></div>
+      <div class="card"><details id="suBox" ontoggle="if(this.open)batchStartForm()"><summary><b>批次修改開始上課日</b>（Excel，每人日期不同時用）</summary><div id="suForm"></div></details></div>
     </section>
 
     <!-- 續費（行政） -->
@@ -201,6 +202,7 @@ label.ck{display:flex;gap:6px;align-items:center;padding:4px 0;font-size:15px}
           <button class="btn" onclick="loadPay()">計算</button>
           <button class="btn ghost" id="payDl" onclick="dlPay()" disabled>下載 Excel</button>
         </div>
+        <div class="row hide" id="payLock" style="margin-top:8px"></div>
         <div class="row hide" id="payCutRow" style="margin-top:8px">
           <span class="muted">影片補課統計至</span><input id="payCut" type="date">
           <button class="btn sm ghost" onclick="loadPay(true)">用這天重新計算</button>
@@ -508,13 +510,16 @@ function loadRo(name){
   roCls=name; markChip('roChips',name); $('roList').innerHTML='<div class="empty"><span class="spin"></span></div>';
   call('apiRoster',S.pin,name).then(function(L){
     S.ro=L;
-    $('roList').innerHTML='<div class="muted" style="margin-bottom:4px">'+esc(name)+'：在班 '+L.filter(function(x){return x.active;}).length+' 人</div>'+L.map(function(s,i){
+    var canSel=function(s){ return s.active&&s.ident==='正式'&&!s.quit; }, nSel=L.filter(canSel).length;
+    $('roList').innerHTML='<div class="row" style="justify-content:space-between;margin-bottom:4px"><span class="muted">'+esc(name)+'：在班 '+L.filter(function(x){return x.active;}).length+' 人</span>'+
+      (nSel&&!S.roSel?'<button class="btn sm ghost" onclick="roSelToggle(true)">批次改開始日</button>':'')+'</div>'+(S.roSel&&nSel?roSelBar():'')+L.map(function(s,i){
       var tags='<span class="tag">'+esc(s.branch)+'</span>'+(s.ident==='試聽'?'<span class="tag tr">試聽</span>':'')+(s.quit?'<span class="tag">已退 '+md(s.quit)+'</span>':'')+
         (s.remain!=null&&!s.quit?'<span class="tag'+(s.remain<=0?' mk':'')+'">剩 '+s.remain+' 堂</span>':'');
       var sub='加入 '+(md(s.join)||'—')+(s.formal&&s.formal!==s.join?'｜轉正 '+md(s.formal):'')+(s.note?'｜'+esc(s.note):'');
       var acts=(s.ident==='試聽'&&!s.quit?'<button class="btn sm ok" onclick="roAct(\'formal\','+i+')">✓ 轉正</button> <button class="btn sm out-bad" onclick="roAct(\'notcontinue\','+i+')">✕ 不續班</button>':'')+
         (s.ident==='正式'&&s.formal&&s.formal!==s.join&&!s.quit?'<button class="btn sm ghost" onclick="roAct(\'undoformal\','+i+')">取消轉正</button> ':'')+
         (s.quit?'<button class="btn sm ghost" onclick="roAct(\'undoquit\','+i+')">取消退班</button>':(s.ident==='試聽'?'':'<button class="btn sm ghost" onclick="roAct(\'quit\','+i+')">退班</button>'));
+      if(S.roSel){ if(!canSel(s)) return ''; return '<label class="list-item" style="cursor:pointer"><input type="checkbox" class="roCk" value="'+i+'" onchange="roSelCount()" style="margin-right:8px"><div class="grow"><b>'+esc(s.name)+'</b>'+tags+'<div class="muted">開始 '+(md(s.formal||s.join)||'—')+'</div></div></label>'; }
       return '<div class="list-item"'+(s.active?'':' style="opacity:.55"')+'><div class="grow"><b>'+esc(s.name)+'</b>'+tags+'<div class="muted">'+sub+'</div></div>'+acts+'</div>';
     }).join('');
   });
@@ -655,7 +660,7 @@ function loadPay(useCut){
   var cut=useCut? $('payCut').value : '';
   $('payBox').innerHTML='<div class="empty"><span class="spin"></span></div>';
   call('apiMonthly',S.pin,m,cut).then(function(r){
-    S.payRes=r; S.payMonth=m; $('payDl').disabled=!r.rows.length;
+    S.payRes=r; S.payMonth=m; $('payDl').disabled=!r.rows.length; renderLock(m,r.settled);
     $('payCutRow').classList.toggle('hide',!r.canSetCutoff); $('payCut').value=r.cutoff;
     if(!r.rows.length){ $('payBox').innerHTML='<div class="empty">'+m+' 沒有已點名的堂次</div>'; return; }
     var B=r.branches, T=r.showTotal, fmt=function(n){return n==null?'':Number(Math.round(n)).toLocaleString();};
@@ -818,11 +823,13 @@ function renderSettings(){
     '<div class="grid2">'+fld('補課期限天數','<input id="sf_lim" type="number" style="width:100%" value="'+esc(c['補課期限天數'])+'">')+
     fld('缺課追蹤起始日（空白 = 全部）','<input id="sf_since" type="date" style="width:100%" value="'+esc(c['缺課追蹤起始日']||'')+'">')+
     fld('續費提醒堂數（剩幾堂就提醒）','<input id="sf_th" type="number" style="width:100%" value="'+esc(c['續費提醒堂數'])+'">')+
-    fld('預設續費堂數','<input id="sf_def" type="number" style="width:100%" value="'+esc(c['預設續費堂數'])+'">')+'</div>'+
+    fld('預設續費堂數','<input id="sf_def" type="number" style="width:100%" value="'+esc(c['預設續費堂數'])+'">')+
+    fld('月結已結算至（空白 = 都還沒結算）','<input id="sf_lock" type="month" style="width:100%" value="'+esc(c['已結算至']||'')+'">')+'</div>'+
+    '<p class="muted" style="font-size:13px;margin:6px 0 0">已結算月份的學生開始上課日不能再改（也可以在「月結」頁直接標記）。</p>'+
     '<button class="btn" style="margin-top:10px" onclick="saveSettingsForm()">儲存設定</button>';
 }
 function saveSettingsForm(){
-  call('adminSaveSettings',null,{'網頁標題':val('sf_title'),'分校':val('sf_br'),'補課期限天數':val('sf_lim'),'缺課追蹤起始日':val('sf_since'),'續費提醒堂數':val('sf_th'),'預設續費堂數':val('sf_def')})
+  call('adminSaveSettings',null,{'網頁標題':val('sf_title'),'分校':val('sf_br'),'補課期限天數':val('sf_lim'),'缺課追蹤起始日':val('sf_since'),'續費提醒堂數':val('sf_th'),'預設續費堂數':val('sf_def'),'已結算至':val('sf_lock')})
     .then(function(){ toast('設定已儲存'); refreshBoot(); });
 }
 
@@ -870,7 +877,8 @@ function dlLogs(){
 // ── 批次新增（班級、學生）：從 Excel 複製貼上，或上傳 .xlsx / .csv ──
 var BC_COLS=['班級名稱','星期','時段','開課日','預計堂數','薪資規則','講師','停課日期','備註'];
 var BS_COLS=['學生姓名','分校','班級','身分','加入日','家長聯絡','備註'];
-var COL_ALIAS={'姓名':'學生姓名','學生':'學生姓名','名字':'學生姓名','校區':'分校','班別':'班級','班級名稱':'班級','電話':'家長聯絡','家長電話':'家長聯絡','聯絡電話':'家長聯絡'};
+var SU_COLS=['學生姓名','分校','班級','開始上課日'];
+var COL_ALIAS={'姓名':'學生姓名','學生':'學生姓名','名字':'學生姓名','校區':'分校','班別':'班級','班級名稱':'班級','電話':'家長聯絡','家長電話':'家長聯絡','聯絡電話':'家長聯絡','開始日':'開始上課日','上課日':'開始上課日','正式起日':'開始上課日','正式上課日':'開始上課日','加入日':'開始上課日'};
 var CLS_ALIAS={'班級':'班級名稱','班別':'班級名稱','開始日':'開課日','堂數':'預計堂數','老師':'講師','薪資':'薪資規則','上課時間':'時段'};
 function pad2(n){ return ('0'+n).slice(-2); }
 function cellStr(v){
@@ -918,23 +926,24 @@ function dlTemplate(name, rows){
     var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); },1500);
   });
 }
-function batchBox(prefix, cols, help){
+function batchBox(prefix, cols, help, verb){
   return '<p class="muted" style="margin:6px 0">'+help+'</p>'+
     '<p class="muted" style="margin:6px 0;font-size:13px">欄位順序：'+cols.join('｜')+'（第一列放標題的話，順序可以不一樣）</p>'+
     '<div class="row"><button class="btn sm ghost" onclick="'+prefix+'Template()">下載範本</button>'+
     '<label class="btn sm ghost" style="cursor:pointer">上傳 Excel／CSV<input type="file" id="'+prefix+'File" accept=".xlsx,.xls,.csv" class="hide" onchange="'+prefix+'FromFile(this)"></label></div>'+
     '<textarea id="'+prefix+'Text" rows="6" style="width:100%;margin-top:8px;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:8px" placeholder="從 Excel 選取表格（可含標題列）→ 複製 → 貼在這裡"></textarea>'+
     '<div id="'+prefix+'Opts"></div>'+
-    '<div class="row" style="margin-top:8px"><button class="btn ghost" onclick="'+prefix+'Check()">檢查</button><button class="btn" id="'+prefix+'Go" onclick="'+prefix+'Import()" disabled>匯入</button></div>'+
+    '<div class="row" style="margin-top:8px"><button class="btn ghost" onclick="'+prefix+'Check()">檢查</button><button class="btn" id="'+prefix+'Go" onclick="'+prefix+'Import()" disabled>'+(verb||'匯入')+'</button></div>'+
     '<div id="'+prefix+'Prev" style="margin-top:8px"></div>';
 }
-function showPreview(prefix, res, unit){
-  var okN=res.filter(function(r){return r.ok;}).length, badN=res.length-okN;
-  $(prefix+'Prev').innerHTML='<div class="muted" style="margin-bottom:4px">可以匯入 <b style="color:var(--ok)">'+okN+'</b> '+unit+(badN?'，<b style="color:var(--bad)">'+badN+'</b> 列有問題（不會匯入，修正後再檢查一次）':'')+'</div>'+
+function showPreview(prefix, res, unit, verb){
+  verb=verb||'匯入';
+  var okN=res.filter(function(r){return r.ok;}).length, skN=res.filter(function(r){return r.skip;}).length, badN=res.length-okN-skN;
+  $(prefix+'Prev').innerHTML='<div class="muted" style="margin-bottom:4px">可以'+verb+' <b style="color:var(--ok)">'+okN+'</b> '+unit+(skN?'，'+skN+' 列日期沒變（略過）':'')+(badN?'，<b style="color:var(--bad)">'+badN+'</b> 列有問題（不會'+verb+'，修正後再檢查一次）':'')+'</div>'+
     '<div class="tbl-wrap"><table><thead><tr><th>列</th><th class="nm">名稱</th><th></th><th style="text-align:left">說明</th></tr></thead><tbody>'+
-    res.map(function(r){ return '<tr><td>'+r.line+'</td><td class="nm">'+esc(r.name||'—')+'</td><td style="color:'+(r.ok?'var(--ok)':'var(--bad)')+'">'+(r.ok?'✓':'✗')+'</td><td style="text-align:left;white-space:normal">'+esc(r.msg)+'</td></tr>'; }).join('')+
+    res.map(function(r){ return '<tr'+(r.skip?' style="opacity:.5"':'')+'><td>'+r.line+'</td><td class="nm">'+esc(r.name||'—')+'</td><td style="color:'+(r.ok?'var(--ok)':(r.skip?'#888':'var(--bad)'))+'">'+(r.ok?'✓':(r.skip?'—':'✗'))+'</td><td style="text-align:left;white-space:normal">'+esc(r.msg)+'</td></tr>'; }).join('')+
     '</tbody></table></div>';
-  var go=$(prefix+'Go'); go.disabled=!okN; go.textContent='匯入 '+okN+' '+unit;
+  var go=$(prefix+'Go'); go.disabled=!okN; go.textContent=verb+' '+okN+' '+unit;
 }
 
 // 班級
@@ -981,6 +990,74 @@ function bsImport(){
     toast('已新增 '+res.filter(function(r){return r.ok;}).length+' 位學生'); $('bsText').value=''; $('bsPrev').innerHTML='';
     if(roCls) loadRo(roCls); loadTrials();
   }).catch(function(){ $('bsGo').disabled=false; });
+}
+
+// ── 批次修改開始上課日 ──
+// 1) 名單頁勾選，全部改成同一天
+function roSelToggle(on){ S.roSel=on; if(roCls) loadRo(roCls); }
+function roSelAll(ck){ [].forEach.call(document.querySelectorAll('.roCk'),function(c){ c.checked=ck; }); roSelCount(); }
+function roSelCount(){ $('ssCnt').textContent=document.querySelectorAll('.roCk:checked').length; $('ssGo').disabled=true; $('ssGo').textContent='修改'; $('ssPrev').innerHTML=''; }
+function roSelItems(){ return [].map.call(document.querySelectorAll('.roCk:checked'),function(c){ var s=S.ro[+c.value]; return {cls:roCls,branch:s.branch,name:s.name}; }); }
+function roSelBar(){
+  var lock=window.STORE.conf()['已結算至']||'';
+  return '<div style="background:#f3f6fb;border-radius:8px;padding:8px;margin:6px 0">'+
+    '<div class="row"><label class="ck"><input type="checkbox" onchange="roSelAll(this.checked)"> 全選</label><span class="muted">已勾 <b id="ssCnt">0</b> 人</span>'+
+    '<span class="muted">改成</span><input id="ssDate" type="date" value="'+S.boot.today+'" onchange="roSelCount()"></div>'+
+    '<p class="muted" style="font-size:13px;margin:6px 0">只列出在班的正式生（試聽生請用「轉正」）。'+(lock?'已結算至 '+lock+'：開始日在這個月以前的學生不能改。':'')+'</p>'+
+    '<div class="row"><button class="btn ghost" onclick="ssCheck()">檢查</button><button class="btn" id="ssGo" onclick="ssImport()" disabled>修改</button><button class="btn ghost" onclick="roSelToggle(false)">取消</button></div>'+
+    '<div id="ssPrev" style="margin-top:8px"></div></div>';
+}
+function ssCheck(){
+  var it=roSelItems(); if(!it.length) return toast('請先勾選學生'); if(!$('ssDate').value) return toast('請選日期');
+  call('apiBatchStart',null,it,$('ssDate').value,true).then(function(res){ showPreview('ss',res,'位','修改'); });
+}
+function ssImport(){
+  if(!confirm('確定把開始上課日改成 '+$('ssDate').value+'？（'+$('ssGo').textContent+'）')) return;
+  $('ssGo').disabled=true;
+  call('apiBatchStart',null,roSelItems(),$('ssDate').value,false).then(function(res){
+    toast('已修改 '+res.filter(function(r){return r.ok;}).length+' 位學生的開始上課日'); S.roSel=false; loadRo(roCls);
+  }).catch(function(){ $('ssGo').disabled=false; });
+}
+// 2) Excel：每人各自的日期
+function batchStartForm(){
+  if($('suText')) return;
+  $('suForm').innerHTML=batchBox('su',SU_COLS,'一列一位學生，改成各自的開始上課日。建議先按「下載範本」：會列出目前所有在班的正式生和現在的開始日，只要改日期再上傳；日期沒變的列會自動略過。'+(S.role==='branch'?'分校可以留空。':'分校留空時，系統會從名單找。'),'修改');
+}
+function suTemplate(){
+  var rows=[SU_COLS];
+  S.boot.classes.forEach(function(c){
+    window.API.apiRoster(c.name).forEach(function(s){ if(s.active&&s.ident==='正式'&&!s.quit) rows.push([s.name,s.branch,c.name,s.formal||s.join||'']); });
+  });
+  if(rows.length===1) return toast('目前沒有在班的正式生');
+  dlTemplate('批次修改開始上課日_'+S.boot.today+'.xlsx',rows);
+}
+function suFromFile(inp){ var f=inp.files[0]; if(!f) return; readGridFile(f).then(function(g){ S.suRows=gridToRows(g,SU_COLS,false); $('suText').value=''; suCheck(true); }).catch(function(e){ toast(e.message); }); inp.value=''; }
+function suCheck(fromFile){
+  if(fromFile!==true) S.suRows=gridToRows(parseGrid($('suText').value),SU_COLS,false);
+  if(!S.suRows.length) return toast('沒有讀到資料');
+  call('apiBatchStartRows',null,S.suRows,true).then(function(res){ showPreview('su',res,'位','修改'); });
+}
+function suImport(){
+  if(!confirm('確定'+$('suGo').textContent+'學生的開始上課日？')) return;
+  $('suGo').disabled=true;
+  call('apiBatchStartRows',null,S.suRows,false).then(function(res){
+    toast('已修改 '+res.filter(function(r){return r.ok;}).length+' 位學生的開始上課日'); $('suText').value=''; $('suPrev').innerHTML='';
+    if(roCls) loadRo(roCls);
+  }).catch(function(){ $('suGo').disabled=false; });
+}
+// 3) 月結頁：已結算月份（主管設定；分校行政只看得到）
+function prevMonth(m){ var y=+m.slice(0,4), mo=+m.slice(5,7)-1; if(mo<1){ y--; mo=12; } return y+'-'+pad2(mo); }
+function renderLock(m, settled){
+  var h='<span class="muted">已結算至 <b>'+(settled||'（尚未設定）')+'</b></span>';
+  if(S.role==='boss'){
+    if(!settled||m>settled) h+=' <button class="btn sm ghost" onclick="setSettled(\''+m+'\')">把 '+m+'（含以前）標記為已結算</button>';
+    else h+=' <button class="btn sm ghost" onclick="setSettled(\''+prevMonth(m)+'\')">取消 '+m+' 的結算</button>';
+  }
+  $('payLock').innerHTML=h; $('payLock').classList.remove('hide');
+}
+function setSettled(m){
+  if(!confirm('確定把「已結算至」設為 '+m+'？\n之後開始上課日在 '+m+'（含）以前的學生，就不能再改開始日。')) return;
+  call('apiSetSettled',null,m).then(function(){ toast('已結算至 '+m); renderLock($('payMonth').value,m); });
 }
 
 </script>
